@@ -1,8 +1,16 @@
 # Integrated-Circuit Netlist R&D Corpus
 
-This note identifies existing open netlists that are useful for research and
+This page identifies existing open netlists that are useful for research and
 development of the canonical SPICE graph extractor. The focus is transistor-level
 integrated circuits rather than board-level or discrete-component examples.
+
+Read it as a survey with a proposal attached. The sources and the extraction
+results below are findings, recorded against ngspice 46; the tiers and
+priorities at the end are what those findings argue for, and none of it has
+been built yet. The corpus that actually ships is still the three
+checksum-pinned ngspice examples in `scripts/verify_ngspice_corpus.py`,
+described under
+[verifying against real ngspice examples](extraction.md#verifying-against-real-ngspice-examples).
 
 The proposed corpus mixes four kinds of material:
 

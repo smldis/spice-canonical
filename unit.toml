@@ -3,7 +3,7 @@ schema_version = 1
 [unit]
 id = "spice-canonical"
 name = "SPICE Canonical"
-ontology = "ONTOLOGY.md"
+ontology = "ONTOLOME.md"
 children = []
 
 [workflows]
