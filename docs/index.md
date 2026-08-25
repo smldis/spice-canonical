@@ -97,4 +97,5 @@ excludes on purpose.
 representation
 extraction
 netlist-corpus
+api
 ```
