@@ -1,5 +1,10 @@
 # SPICE Canonical Ontology
 
+This is the ongoing self-study of the component rooted here. Briefly inhabit
+its perspective as you work: what are you learning about what it is, why it
+exists, and what it might become? Help this account evolve when you have
+something useful to add.
+
 ## Purpose and scope
 
 SPICE Canonical extracts a deterministic structural view of Eldo and ngspice

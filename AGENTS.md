@@ -17,7 +17,7 @@ Two surfaces here, deliberately separate. Know which one you are in.
 
 | Surface | Where | Maintained against the code? |
 | --- | --- | --- |
-| **Contracts** — what this unit guarantees now, and its exclusions | `ONTOLOME.md` | **Yes.** Update it in the same change that alters the contract. Not published. |
+| **Self-study** — evolving understanding, including commitments, evidence, assumptions, and open questions | `ONTOLOME.md` | **Yes.** Refine it when work yields useful insight; update commitments explicitly when they change. Not published. |
 | **Documentation** — the format, the parser, and the corpus | `docs/` | **Yes.** Everything under `docs/` is published to the Sphinx site by `python composition.py docs` from the repository root. |
 
 There is no third surface: this unit has **no `design/` directory**. If you
