@@ -33,8 +33,29 @@ handle:
 | `subcircuits` | one `Circuit` per `.SUBCKT`, in declaration order |
 | `diagnostics` | a `Diagnostic` per non-fatal omission or assumption |
 
-A `Circuit` carries `name`, `pins`, and `devices`; a `Device` carries `name`,
-`type`, `connections`, and `parameters`. `render()` produces the tabular text.
+A `Circuit` carries `name`, `pins`, `devices`, and
+`parameter_defaults: tuple[Parameter, ...] = ()`. The optional final field keeps
+existing three-argument constructors usable. Each `Parameter` has a `name` and
+raw, unevaluated `value`; defaults retain declaration order and spelling.
+A `Device` carries `name`, `type`, `connections`, and `parameters`; subcircuit
+instance parameters remain explicit overrides. `render()` produces the tabular
+text, including a `PARAMETER_DEFAULTS` table for definitions with defaults.
+`normalize_device_types` preserves circuit defaults.
+
+Header defaults accept assignments with or without `PARAMS:` (also `PARAM:`),
+spaces on either side of `=`, leading `+` continuations, and quoted or grouped
+expressions. Expressions containing whitespace or comparison assignments must
+be quoted or grouped. Missing values, stray tokens after defaults begin, and
+unbalanced quotes or groups raise `CanonicalParseError` with the declaration's
+logical starting line; they are not silently omitted. Before any assignment or
+parameter marker, bare tokens are pins, so a missing `=` cannot always be
+inferred. Expression validity and duplicate-name precedence are left to the
+simulator.
+
+Defaults are not evaluated, substituted into device expressions, or expanded
+into instances. Global `.PARAM` semantics and model-body interpretation remain
+deferred and omitted from canonical data (the existing `.MODEL` name/type
+refinement still applies). There is no canonical-text input parser.
 
 A netlist that is structurally inconsistent rather than merely incomplete raises
 `CanonicalParseError` — a duplicate device name within one circuit, an instance

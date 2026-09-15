@@ -31,6 +31,30 @@ VDD
 VSS
 ```
 
+A subcircuit with declaration defaults has an optional two-column table directly
+after its interface and before its net and device tables:
+
+```text
+PARAMETER_DEFAULTS INV
+name | value
+WP | 2u
+WN | {WP / 2}
+```
+
+This represents `.SUBCKT INV A Y VDD VSS PARAMS: WP=2u WN={WP / 2}`.
+Rows retain declaration order, parameter-name spelling, and unevaluated value
+spelling (including quotes or braces). Repeated names remain separate rows;
+the extractor does not choose simulator precedence. Assignment spacing is not
+retained, and continuation lines are joined by the existing logical-line parser.
+Cells use the same escaping as the other tables. No table is emitted when there
+are no defaults, so default-free output is unchanged.
+
+Defaults belong to the definition. An instance's device parameters contain only
+its explicit overrides; the extractor neither copies defaults into instances nor
+evaluates expressions or resolves parameter scope. This is canonical table
+syntax, not simulator syntax. There is no canonical-text parser or supported
+canonical-text round trip.
+
 Each circuit, including `TOP`, has a net-incident table with one row per net.
 
 ```text
