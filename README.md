@@ -11,7 +11,10 @@ spice-canonical input.cir --format ngspice --output canonical.txt
 
 The Python API is `spice_canonical.canonical_netlist`. Includes are expanded
 recursively; model libraries can remain opaque; strict mode turns unresolved or
-unsupported structures into failures.
+unsupported structures into failures. Subcircuit declaration defaults are retained
+as ordered, unevaluated `Circuit.parameter_defaults` and optional
+`PARAMETER_DEFAULTS` tables, separately from instance overrides. Global `.PARAM`
+and model-body semantics are not implemented.
 
 With ngspice installed, the optional network-backed corpus check is:
 

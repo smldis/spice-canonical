@@ -6,7 +6,7 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable, Literal, Mapping, Sequence, cast
 
@@ -38,7 +38,7 @@ class Connection:
 
 @dataclass(frozen=True)
 class Parameter:
-    """A device parameter rendered as a named value."""
+    """A declared default or explicit device parameter with an unevaluated value."""
 
     name: str
     value: str
@@ -61,6 +61,7 @@ class Circuit:
     name: str
     pins: tuple[str, ...]
     devices: tuple[Device, ...]
+    parameter_defaults: tuple[Parameter, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,7 @@ class _CircuitBuilder:
     name: str
     pins: tuple[str, ...]
     raw_devices: list[_RawDevice]
+    parameter_defaults: tuple[Parameter, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -246,7 +248,7 @@ def normalize_device_types(
                     parameters=parameters,
                 )
             )
-        return Circuit(circuit.name, circuit.pins, tuple(devices))
+        return replace(circuit, devices=tuple(devices))
 
     return CanonicalNetlist(
         top=normalize_circuit(netlist.top),
@@ -297,13 +299,15 @@ def _from_statements(
                 raise CanonicalParseError(
                     f"line {statement.line}: nested .SUBCKT declarations are unsupported"
                 )
-            name, pins = _parse_subckt_header(tokens, statement.line)
+            name, pins, defaults = _parse_subckt_header(tokens, statement.line)
             key = name.casefold()
             if key in subcircuits_by_name:
                 raise CanonicalParseError(
                     f"line {statement.line}: duplicate subcircuit {name!r}"
                 )
-            current = _CircuitBuilder(name=name, pins=pins, raw_devices=[])
+            current = _CircuitBuilder(
+                name=name, pins=pins, raw_devices=[], parameter_defaults=defaults
+            )
             subcircuits.append(current)
             subcircuits_by_name[key] = current
             continue
@@ -461,18 +465,22 @@ def _validate_spice_format(value: str) -> SpiceFormat:
     return cast(SpiceFormat, value)
 
 
-def _parse_subckt_header(tokens: Sequence[str], line: int) -> tuple[str, tuple[str, ...]]:
+def _parse_subckt_header(
+    tokens: Sequence[str], line: int
+) -> tuple[str, tuple[str, ...], tuple[Parameter, ...]]:
     if len(tokens) < 2:
         raise CanonicalParseError(f"line {line}: .SUBCKT requires a name")
     name = tokens[1]
     pins: list[str] = []
     pin_tokens = tokens[2:]
+    defaults: tuple[Parameter, ...] = ()
     for index, token in enumerate(pin_tokens):
         if (
             token.casefold() in {"params:", "param:"}
             or "=" in token
-            or (index + 1 < len(pin_tokens) and pin_tokens[index + 1] == "=")
+            or (index + 1 < len(pin_tokens) and pin_tokens[index + 1].startswith("="))
         ):
+            defaults = _parse_parameter_defaults(pin_tokens[index:], line)
             break
         pins.append(token)
     duplicate = _first_duplicate(pins)
@@ -480,7 +488,31 @@ def _parse_subckt_header(tokens: Sequence[str], line: int) -> tuple[str, tuple[s
         raise CanonicalParseError(
             f"line {line}: subcircuit {name!r} repeats pin {duplicate!r}"
         )
-    return name, tuple(pins)
+    return name, tuple(pins), defaults
+
+
+def _parse_parameter_defaults(tokens: Sequence[str], line: int) -> tuple[Parameter, ...]:
+    """Read declaration assignments without applying simulator parameter semantics."""
+    if tokens[0].casefold() in {"params:", "param:"}:
+        tokens = tokens[1:]
+    try:
+        if not tokens or any(t.casefold() in {"params:", "param:"} for t in tokens):
+            raise CanonicalParseError("expected default assignments")
+        positional, parameters = _split_parameters(tokens)
+        if positional:
+            raise CanonicalParseError(f"expected default assignment, got {positional[0]!r}")
+        for parameter in parameters:
+            if not re.fullmatch(r"[^=\s\[\]{}()\"\']+", parameter.name):
+                raise CanonicalParseError(f"invalid default name {parameter.name!r}")
+            if not parameter.value or not _split_tokens(
+                parameter.value, default_value=True
+            ):
+                raise CanonicalParseError(f"missing value for default {parameter.name!r}")
+    except CanonicalParseError as error:
+        raise CanonicalParseError(
+            f"line {line}: malformed .SUBCKT defaults: {error}"
+        ) from error
+    return tuple(parameters)
 
 
 def _record_model(
@@ -520,7 +552,12 @@ def _build_circuit(
         )
         for raw in builder.raw_devices
     )
-    return Circuit(name=builder.name, pins=builder.pins, devices=devices)
+    return Circuit(
+        name=builder.name,
+        pins=builder.pins,
+        devices=devices,
+        parameter_defaults=builder.parameter_defaults,
+    )
 
 
 def _parse_device(
@@ -791,7 +828,17 @@ def _parameter_value(parameters: Sequence[Parameter], name: str) -> str | None:
 
 def _render_subcircuit(circuit: Circuit) -> str:
     pins = "\n".join([f"SUBCKT {_cell(circuit.name)}", "pin", *map(_cell, circuit.pins)])
-    return f"{pins}\n\n{_render_circuit_tables(circuit)}"
+    sections = [pins]
+    if circuit.parameter_defaults:
+        sections.append(
+            "\n".join([
+                f"PARAMETER_DEFAULTS {_cell(circuit.name)}",
+                "name | value",
+                *(f"{_cell(p.name)} | {_cell(p.value)}" for p in circuit.parameter_defaults),
+            ])
+        )
+    sections.append(_render_circuit_tables(circuit))
+    return "\n\n".join(sections)
 
 
 def _render_circuit_tables(circuit: Circuit) -> str:
@@ -906,13 +953,14 @@ def _strip_inline_comment(line: str, *, semicolon_comments: bool = False) -> str
     return line
 
 
-def _split_tokens(text: str) -> list[str]:
+def _split_tokens(text: str, *, default_value: bool = False) -> list[str]:
     tokens: list[str] = []
     current: list[str] = []
     quote: str | None = None
     depths = {"(": 0, "[": 0, "{": 0}
     closing = {")": "(", "]": "[", "}": "{"}
     escaped = False
+    groups: list[str] = []
 
     for character in text:
         if escaped:
@@ -934,20 +982,28 @@ def _split_tokens(text: str) -> list[str]:
             continue
         if character in depths:
             current.append(character)
+            if default_value:
+                groups.append(character)
             depths[character] += 1
             continue
         if character in closing:
             current.append(character)
             opener = closing[character]
+            if default_value and (not groups or groups.pop() != opener):
+                raise CanonicalParseError("mismatched grouping in default value")
             if depths[opener] > 0:
                 depths[opener] -= 1
             continue
+        if default_value and character == "=" and not any(depths.values()):
+            raise CanonicalParseError("unexpected assignment in default value")
         if character.isspace() and not any(depths.values()):
             if current:
                 tokens.append("".join(current))
                 current = []
             continue
         current.append(character)
+    if default_value and (quote is not None or any(depths.values())):
+        raise CanonicalParseError("unterminated quote or group in default value")
     if current:
         tokens.append("".join(current))
     return tokens
