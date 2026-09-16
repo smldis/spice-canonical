@@ -662,16 +662,15 @@ def _parse_bjt(
         None,
     )
     if model_index is None:
-        model_index = 3
         if len(positional) > 4:
-            diagnostics.append(
-                Diagnostic(
-                    raw.line,
-                    f"{raw.tokens[0]} model is not declared in this file; assumed a "
-                    "three-terminal BJT",
-                    source=raw.source,
-                )
+            # Without a declared model, a fourth node cannot be distinguished
+            # from a model followed by positional arguments. Do not promote
+            # either possible split to terminal/model evidence.
+            return _unresolved_device(
+                raw, "ambiguous BJT terminal/model boundary without a declared model",
+                diagnostics,
             )
+        model_index = 3
     if model_index not in {3, 4}:
         return _unresolved_device(
             raw, "could not distinguish BJT nodes from its model", diagnostics

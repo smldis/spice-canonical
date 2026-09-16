@@ -202,3 +202,49 @@ the executable is available and otherwise skips only that simulator invocation.
 Which further netlists are worth pulling into that corpus, and what each one
 would prove, is surveyed in
 [the integrated-circuit netlist corpus](netlist-corpus.md).
+
+## Unavailable libraries and models
+
+Extraction can retain available structure without a complete simulator deck:
+
+| Input condition | Existing extraction behavior |
+| --- | --- |
+| Missing root file | Raises an I/O error; there is no input to extract. |
+| Missing `.include` file | Continues with a diagnostic naming the resolved missing path and the including file/line. |
+| `stop_include` match or `.LIB` | Deliberately leaves the boundary unexpanded; does not check whether that library exists or emit a missing-file diagnostic. |
+| Undefined X target | Retains the target type, ordered actual nets in `unresolved_nets`, and raw parameters; emits a diagnostic and supplies no guessed formal connections. |
+| Supplied external subcircuit signature | Binds actual nets to supplied formal pins and checks arity; supplies no internal definition. This option belongs to `from_file`. |
+| Undeclared MOS/diode model | Retains syntax-defined terminal roles, the model identifier and raw parameters, using generic `mosfet`/`diode` type. Does not infer polarity or model contents. |
+| Undeclared BJT model | Uses generic `bjt`; see the terminal-count limitation below. |
+| Malformed represented structure | Existing structural checks still apply, including duplicate declarations/devices and known subcircuit arity mismatch. |
+
+Unknown model semantics are different from a missing file: the parser does not
+validate model availability, and no diagnostic is emitted merely because a
+MOS/diode model declaration is absent. An intentionally opaque library may contain
+that declaration. Neither a diagnostic-free extraction nor available terminal
+roles establish electrical equivalence or a runnable simulation.
+
+BJT syntax permits three or four terminals. A recognized model identifier locates
+the model token. Without one, exactly four positional tokens after the device name
+supply the three terminal nets and model identifier; named parameters do not make
+that split ambiguous. With additional positional tokens, extraction cannot distinguish
+a fourth terminal from a model followed by arguments. It now emits an `unresolved`
+device with no connections, retaining every token after the name in `Parameter("raw",
+...)` and a source-qualified `ambiguous BJT terminal/model boundary` diagnostic.
+For example, `Q1 c b e substrate MissingModel area=2` preserves
+`c b e substrate MissingModel area=2` as raw text without assigning a substrate role
+or model identity. Available siblings still extract normally. Raw token content is
+retained with normalized spacing, not as a byte-for-byte source-line serializer.
+
+Compatibility change: this ambiguous case previously guessed three terminals and
+split `substrate` / `MissingModel` into model / arguments. Consumers now receive the
+existing unresolved-device representation instead. Unambiguous undeclared-model
+three-terminal BJTs and recognized-model four-terminal BJTs retain their prior
+behavior. Undeclared-model three-terminal devices with extra positional arguments
+also remain unresolved until their split can be established; no new dialect
+heuristic is introduced.
+
+`--strict` deliberately exits 2 when extraction emits diagnostics, including
+missing includes, undefined X targets and ambiguous BJT syntax. It does not reject
+all absent model declarations or intentional boundaries. Non-strict extraction is
+the API's normal behavior. No library is fetched automatically.
