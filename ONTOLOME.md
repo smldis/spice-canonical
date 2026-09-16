@@ -58,3 +58,22 @@ classifier, model-library interpreter, or project-wide study representation.
 ## Child composition
 
 There are currently no child units.
+
+## Incomplete library evidence
+
+Missing includes already diagnose their source while preserving available devices;
+undefined X calls retain target, raw positional nets and parameters without guessed
+formal pins. External pin signatures provide an interface, never internals.
+Undeclared MOS/diode models already retain syntax-defined terminals and generic
+types without inferred polarity. Model availability is not validated, and deliberate
+include/.LIB boundaries are silent; absence of diagnostics is not semantic completeness.
+An undeclared BJT with extra positional tokens now uses the existing unresolved
+representation with raw token content and a source diagnostic. This explicitly
+supersedes the three-terminal guess: uncertain terminal/model boundaries must not
+become represented incidence. Exactly three terminals plus an undeclared model
+remain usable, as do syntax-defined MOS/diode roles. The API shape is unchanged;
+ambiguous BJT rows change from guessed connections/model to unresolved raw evidence.
+
+Observed consumer friction was downstream: an opaque call invalidated unrelated
+certified comparison components. Available extraction and complete interpretation
+are separate commitments; preserving one must not silently claim the other.
