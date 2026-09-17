@@ -188,7 +188,7 @@ def test_undefined_subcircuit_is_retained_with_a_diagnostic() -> None:
     assert len(netlist.diagnostics) == 1
     assert "undefined subcircuit 'EXTERNAL'" in netlist.diagnostics[0].message
     assert (
-        "X1 | EXTERNAL |  | unresolved_nets=in out, gain=2" in netlist.render()
+        "X1 | EXTERNAL | @1=in, @2=out | gain=2" in netlist.render()
     )
 
 

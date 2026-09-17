@@ -55,7 +55,9 @@ simulator.
 Defaults are not evaluated, substituted into device expressions, or expanded
 into instances. Global `.PARAM` semantics and model-body interpretation remain
 deferred and omitted from canonical data (the existing `.MODEL` name/type
-refinement still applies). There is no canonical-text input parser.
+refinement still applies). Use `from_canonical_file("canonical.txt")` or
+`from_canonical_text(text)` from the same module to reload saved custom tables.
+They preserve diagnostics and black-box interfaces without reopening SPICE files.
 
 A netlist that is structurally inconsistent rather than merely incomplete raises
 `CanonicalParseError` — a duplicate device name within one circuit, an instance
@@ -140,8 +142,10 @@ either the include's basename or its resolved path, and leaves matching files
 unexpanded.
 
 Instances that cross such a boundary have no declaration to bind against, so
-their nets would land in an `unresolved_nets` parameter with a diagnostic.
-Supplying the pin names restores named connections without reading the library:
+their terminals retain positional names `@1`, `@2`, etc., with an explicit
+`BlackBox(cell, "positional")` marker and a diagnostic about unavailable formal
+pin names. Supplying pin names creates `BlackBox(cell, "named")` and binds named
+connections without reading the library:
 
 ```python
 netlist = from_file(
@@ -212,8 +216,8 @@ Extraction can retain available structure without a complete simulator deck:
 | Missing root file | Raises an I/O error; there is no input to extract. |
 | Missing `.include` file | Continues with a diagnostic naming the resolved missing path and the including file/line. |
 | `stop_include` match or `.LIB` | Deliberately leaves the boundary unexpanded; does not check whether that library exists or emit a missing-file diagnostic. |
-| Undefined X target | Retains the target type, ordered actual nets in `unresolved_nets`, and raw parameters; emits a diagnostic and supplies no guessed formal connections. |
-| Supplied external subcircuit signature | Binds actual nets to supplied formal pins and checks arity; supplies no internal definition. This option belongs to `from_file`. |
+| Undefined X target | Retains target type, positional `@N` connections, raw overrides and `BlackBox(cell, "positional")`; emits a diagnostic and supplies no guessed formal names. |
+| Supplied external subcircuit signature | Binds actual nets to supplied formal pins, checks arity and marks `BlackBox(cell, "named")`; supplies no internal definition. This option belongs to `from_file`. |
 | Undeclared MOS/diode model | Retains syntax-defined terminal roles, the model identifier and raw parameters, using generic `mosfet`/`diode` type. Does not infer polarity or model contents. |
 | Undeclared BJT model | Uses generic `bjt`; see the terminal-count limitation below. |
 | Malformed represented structure | Existing structural checks still apply, including duplicate declarations/devices and known subcircuit arity mismatch. |

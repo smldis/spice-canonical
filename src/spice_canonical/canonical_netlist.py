@@ -45,6 +45,14 @@ class Parameter:
 
 
 @dataclass(frozen=True)
+class BlackBox:
+    """An external cell interface; its implementation is not represented."""
+
+    cell: str
+    pin_basis: Literal["named", "positional"]
+
+
+@dataclass(frozen=True)
 class Device:
     """One primitive device or subcircuit instance."""
 
@@ -52,6 +60,7 @@ class Device:
     type: str
     connections: tuple[Connection, ...]
     parameters: tuple[Parameter, ...] = ()
+    black_box: BlackBox | None = None
 
 
 @dataclass(frozen=True)
@@ -76,13 +85,32 @@ class CanonicalNetlist:
         """Render the canonical tabular representation."""
 
         sections = []
-        if self.top.devices:
+        if self.top.devices or self.top.name != 'TOP' or self.top.pins or self.top.parameter_defaults:
             sections.append(
-                f"TOP_LEVEL {_cell(self.top.name)}\n\n{_render_circuit_tables(self.top)}"
+                f"TOP_LEVEL {_cell(self.top.name)}\n" +
+                ("pin\n" + "\n".join(map(_cell, self.top.pins)) + "\n" if self.top.pins else "") +
+                "\n" + _render_defaults(self.top) + _render_circuit_tables(self.top)
             )
         for circuit in self.subcircuits:
             sections.append(_render_subcircuit(circuit))
+        if self.diagnostics:
+            sections.append("\n".join([
+                'DIAGNOSTICS', 'source | line | message',
+                *(' | '.join((_cell(str(d.source)) if d.source is not None else '',
+                              str(d.line), _cell(d.message))) for d in self.diagnostics),
+            ]))
         return "\n\n".join(sections) + ("\n" if sections else "")
+
+
+def from_canonical_text(text: str) -> CanonicalNetlist:
+    """Read canonical tables without SPICE extraction or include resolution."""
+    from .canonical_text import parse
+    return parse(text)
+
+
+def from_canonical_file(path: str | Path) -> CanonicalNetlist:
+    """Read the custom canonical text emitted by :meth:`CanonicalNetlist.render`."""
+    return from_canonical_text(Path(path).read_text(encoding='utf-8'))
 
 
 @dataclass(frozen=True)
@@ -241,10 +269,9 @@ def normalize_device_types(
             ):
                 parameters = (*parameters, Parameter("source_type", device.type))
             devices.append(
-                Device(
-                    name=device.name,
+                replace(
+                    device,
                     type=normalized,
-                    connections=device.connections,
                     parameters=parameters,
                 )
             )
@@ -626,8 +653,10 @@ def _parse_subcircuit_instance(
                 source=raw.source,
             )
         )
-        unresolved = Parameter("unresolved_nets", " ".join(actual_nets))
-        return Device(raw.tokens[0], subckt_name, (), (unresolved, *parameters))
+        connections = tuple(Connection(f"@{i}", net)
+                            for i, net in enumerate(actual_nets, 1))
+        return Device(raw.tokens[0], subckt_name, connections, tuple(parameters),
+                      BlackBox(subckt_name, "positional"))
     pins = definition.pins if isinstance(definition, _CircuitBuilder) else definition
     definition_name = definition.name if isinstance(definition, _CircuitBuilder) else subckt_name
     if len(actual_nets) != len(pins):
@@ -639,7 +668,8 @@ def _parse_subcircuit_instance(
         Connection(pin=pin, net=net)
         for pin, net in zip(pins, actual_nets, strict=True)
     )
-    return Device(raw.tokens[0], definition_name, connections, tuple(parameters))
+    black_box = None if isinstance(definition, _CircuitBuilder) else BlackBox(subckt_name, "named")
+    return Device(raw.tokens[0], definition_name, connections, tuple(parameters), black_box)
 
 
 def _parse_bjt(
@@ -827,17 +857,17 @@ def _parameter_value(parameters: Sequence[Parameter], name: str) -> str | None:
 
 def _render_subcircuit(circuit: Circuit) -> str:
     pins = "\n".join([f"SUBCKT {_cell(circuit.name)}", "pin", *map(_cell, circuit.pins)])
-    sections = [pins]
+    return pins + "\n\n" + _render_defaults(circuit) + _render_circuit_tables(circuit)
+
+
+def _render_defaults(circuit: Circuit) -> str:
     if circuit.parameter_defaults:
-        sections.append(
-            "\n".join([
+        return "\n".join([
                 f"PARAMETER_DEFAULTS {_cell(circuit.name)}",
                 "name | value",
                 *(f"{_cell(p.name)} | {_cell(p.value)}" for p in circuit.parameter_defaults),
-            ])
-        )
-    sections.append(_render_circuit_tables(circuit))
-    return "\n\n".join(sections)
+            ]) + "\n\n"
+    return ''
 
 
 def _render_circuit_tables(circuit: Circuit) -> str:
@@ -849,11 +879,11 @@ def _render_circuit_tables(circuit: Circuit) -> str:
             _, references = incidents.setdefault(
                 connection.net.casefold(), (connection.net, [])
             )
-            references.append(f"{device.name}.{connection.pin}")
+            references.append(f"{_item(device.name, ',. ')}.{_item(connection.pin, ',. ')}")
 
     net_lines = [f"NET_INCIDENT_TABLE {_cell(circuit.name)}", "net | incident pins"]
     net_lines.extend(
-        f"{_cell(net)} | {_cell(', '.join(references))}"
+        f"{_cell(net)} | {', '.join(references)}"
         for net, references in incidents.values()
     )
 
@@ -863,21 +893,36 @@ def _render_circuit_tables(circuit: Circuit) -> str:
     ]
     for device in circuit.devices:
         connections = ", ".join(
-            f"{connection.pin}={connection.net}" for connection in device.connections
+            f"{_item(connection.pin, ',= ')}={_item(connection.net, ', ')}" for connection in device.connections
         )
         parameters = ", ".join(
-            f"{parameter.name}={parameter.value}" for parameter in device.parameters
+            f"{_item(parameter.name, ',= ')}={_item(parameter.value, ',')}" for parameter in device.parameters
         )
         device_lines.append(
-            " | ".join(
-                map(_cell, (device.name, device.type, connections, parameters))
-            )
+            " | ".join((_cell(device.name), _cell(device.type), connections, parameters))
         )
-    return "\n".join([*net_lines, "", *device_lines])
+    sections = [*net_lines, "", *device_lines]
+    boxes = [device for device in circuit.devices if device.black_box is not None]
+    if boxes:
+        sections.extend(['', f'BLACK_BOX_TABLE {_cell(circuit.name)}', 'name | cell | pin_basis'])
+        sections.extend(' | '.join(map(_cell, (d.name, d.black_box.cell, d.black_box.pin_basis)))
+                        for d in boxes)
+    return "\n".join(sections)
 
 
 def _cell(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", "\\n")
+    value = value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    if not value.strip(' '):
+        return '\\s' * len(value)
+    return ('\\s' * (len(value) - len(value.lstrip(' '))) + value.strip(' ') +
+            '\\s' * (len(value) - len(value.rstrip(' '))))
+
+
+def _item(value: str, delimiters: str) -> str:
+    value = _cell(value)
+    for delimiter in delimiters:
+        value = value.replace(delimiter, '\\s' if delimiter == ' ' else '\\' + delimiter)
+    return value
 
 
 def _logical_statements(
@@ -1115,10 +1160,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     rendered = netlist.render()
-    if args.output is None:
-        sys.stdout.write(rendered)
-    else:
-        args.output.write_text(rendered, encoding="utf-8")
+    try:
+        if args.output is None:
+            sys.stdout.write(rendered)
+        else:
+            args.output.write_text(rendered, encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        parser.exit(2, f"error: {exc}\n")
     return 0
 
 

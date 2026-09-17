@@ -25,6 +25,12 @@ python scripts/verify_ngspice_corpus.py
 It downloads only checksum-pinned upstream examples. Normal tests remain
 offline.
 
+Saved canonical tables can be read back with `from_canonical_file("canonical.txt")`
+from `spice_canonical.canonical_netlist`. External cells retain explicit black-box
+interfaces: `--external-subcircuits pins.json` supplies ordered formal names;
+otherwise terminals are positional `@1`, `@2`, etc. Optional `BLACK_BOX_TABLE`
+and `DIAGNOSTICS` tables preserve boundaries and warnings through saved files.
+
 ## Documentation
 
 [`docs/`](docs/index.md) is the guide, built into the project's Sphinx site by

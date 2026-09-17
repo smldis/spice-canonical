@@ -52,8 +52,8 @@ are no defaults, so default-free output is unchanged.
 Defaults belong to the definition. An instance's device parameters contain only
 its explicit overrides; the extractor neither copies defaults into instances nor
 evaluates expressions or resolves parameter scope. This is canonical table
-syntax, not simulator syntax. There is no canonical-text parser or supported
-canonical-text round trip.
+syntax, not simulator syntax. `from_canonical_text` and `from_canonical_file`
+read these tables back into canonical objects without evaluating expressions.
 
 Each circuit, including `TOP`, has a net-incident table with one row per net.
 
@@ -191,8 +191,55 @@ The structural punctuation is deliberately small:
 < >   enclose bus indices and ranges
 ```
 
-A literal `|`, backslash, or newline inside a rendered cell is backslash-escaped.
-Parameter expressions otherwise retain their source spelling.
+A literal `|`, backslash, or newline inside a rendered cell uses `\|`, `\\`,
+or `\n`. Carriage returns and tabs use `\r` and `\t`; significant edge spaces
+use `\s`. Inside comma-separated lists, literal commas use `\,`; literal equals
+in assignment names use `\=`. Incident references escape literal dots in either
+the instance or pin name as `\.`. Reading restores the original strings.
+Earlier grouped/quoted parameter expressions with unescaped commas remain
+readable. Ambiguous old incident references containing literal dots must be
+escaped or re-extracted; the reader does not guess their boundaries.
+
+## External cells and saved diagnostics
+
+Unavailable subcircuit implementations are explicit boundaries. Their device
+rows retain the cell type, connections and raw instance overrides. Supplied
+external signatures give named pins; otherwise `@1`, `@2`, etc. retain ordered
+terminal tokens without claiming formal names. Missing primitive model bodies
+do not create this marker: primitive syntax already defines their terminals.
+
+```text
+BLACK_BOX_TABLE TOP
+name | cell | pin_basis
+XM | nmos_lvt | named
+XR | vendor_res | positional
+```
+
+This optional per-circuit table follows its device table. `cell` preserves the
+original library identity even after type normalization. `pin_basis` is `named`
+or `positional`. The Python equivalent is `Device.black_box = BlackBox(cell,
+pin_basis)`; ordinary devices and implemented calls have `black_box=None`.
+This states neither an implementation nor electrical equivalence.
+
+An optional final table preserves extraction diagnostics:
+
+```text
+DIAGNOSTICS
+source | line | message
+/work/design.sp | 1 | included file was not found: /work/vendor.inc
+```
+
+An empty source cell represents no source path. Paths are evidence only: loading
+a canonical artifact never opens its original source, includes or libraries.
+The reader preserves defaults, duplicate parameter entries, unused interface
+pins, black-box markers and diagnostics. It requires blank lines between table
+blocks, rejects unknown/duplicate tables and invalid fields, and checks reciprocal
+net/device incidence. The top-level circuit and subcircuit definitions have
+separate name scopes: a `.SUBCKT TOP` may coexist with `TOP_LEVEL TOP`, and a
+black-box cell called `TOP` does not imply an implementation in the top-level
+circuit. Device/net row ordering need not agree. Files rendered by
+older versions without metadata tables remain readable when unambiguous, but
+diagnostics absent from those files cannot be recovered.
 
 ## Annotations
 

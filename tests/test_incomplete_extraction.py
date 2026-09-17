@@ -66,12 +66,15 @@ def test_external_signature_is_only_an_interface_and_checks_arity(tmp_path):
     path = tmp_path / 'input.sp'
     path.write_text('Xvendor out in 0 Missing gain={K*2}\nR1 out 0 1k')
     unknown = cn.from_file(path)
-    assert unknown.top.devices[0].connections == ()
+    assert unknown.top.devices[0].connections == (
+        cn.Connection('@1', 'out'), cn.Connection('@2', 'in'), cn.Connection('@3', '0'))
+    assert unknown.top.devices[0].black_box == cn.BlackBox('Missing', 'positional')
     assert unknown.top.devices[0].type == 'Missing'
     assert unknown.top.devices[0].parameters == (
-        cn.Parameter('unresolved_nets', 'out in 0'), cn.Parameter('gain', '{K*2}'))
+        cn.Parameter('gain', '{K*2}'),)
     known_pins = cn.from_file(path, external_subcircuits={'Missing': ['O', 'I', 'G']})
     assert not known_pins.subcircuits
+    assert known_pins.top.devices[0].black_box == cn.BlackBox('Missing', 'named')
     assert known_pins.top.devices[0].connections == (
         cn.Connection('O', 'out'), cn.Connection('I', 'in'), cn.Connection('G', '0'))
     with pytest.raises(ValueError):
