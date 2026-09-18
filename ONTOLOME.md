@@ -37,7 +37,8 @@ from an attempt at speculative or exhaustive dialect coverage.
   construction retain their previous behavior.
 - Malformed declaration assignments raise structural errors; expression evaluation,
   default expansion, global `.PARAM` semantics, and model-body interpretation
-  remain outside this extraction contract. There is no canonical-text parser.
+  remain outside this extraction contract. `from_canonical_text` and
+  `from_canonical_file` load the custom rendered tables without re-extraction.
 
 A default-only edit previously disappeared from the structural view. Regression
 fixtures now distinguish it without resolving simulator semantics. This evidence
@@ -62,8 +63,12 @@ There are currently no child units.
 ## Incomplete library evidence
 
 Missing includes already diagnose their source while preserving available devices;
-undefined X calls retain target, raw positional nets and parameters without guessed
-formal pins. External pin signatures provide an interface, never internals.
+undefined X calls now retain target, positional `@N` connections and raw overrides
+without guessed formal names. Explicit `Device.black_box` metadata records cell
+identity and named/positional pin basis. External pin signatures provide an
+interface, never internals. This supersedes packing positional nets into an
+`unresolved_nets` parameter: extraction owns token boundaries, consumers need not
+recover them from a joined string. Type normalization preserves the boundary.
 Undeclared MOS/diode models already retain syntax-defined terminals and generic
 types without inferred polarity. Model availability is not validated, and deliberate
 include/.LIB boundaries are silent; absence of diagnostics is not semantic completeness.
@@ -77,3 +82,21 @@ ambiguous BJT rows change from guessed connections/model to unresolved raw evide
 Observed consumer friction was downstream: an opaque call invalidated unrelated
 certified comparison components. Available extraction and complete interpretation
 are separate commitments; preserving one must not silently claim the other.
+
+## Reusable canonical artifacts
+
+The user requires extraction to be reusable independently of comparison. Canonical
+therefore owns a reader for its existing custom tables, rather than adding a second
+JSON format or making comparison parse SPICE/external interface configuration.
+Optional black-box and diagnostic tables preserve boundaries and evidence. A
+reader checks reciprocal net/device incidence and rejects inconsistent tables;
+structural punctuation is escaped before rendering and decoded after splitting.
+Missing library bodies stay unavailable. This is a data handoff, not simulator
+serialization, inferred pin semantics or an algorithm-quality improvement.
+Prototype maturity is unchanged.
+
+Review of an extracted `.SUBCKT TOP` with top-level devices showed that table
+loading must keep the top-level circuit outside the subcircuit-definition name
+scope. The same distinction keeps an undefined external cell named `TOP`
+unavailable even when `TOP_LEVEL TOP` exists. This refines artifact validation;
+it does not add a new source-language interpretation.
