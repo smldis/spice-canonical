@@ -3,12 +3,29 @@
 This is one file of examples, not another library API. From the
 ``spice-canonical`` checkout, after installing the package, use it like this::
 
-    from examples.inspection_use_cases import case_01, case_27
+    from examples.inspection_use_cases import case_01, case_17, case_27
     from spice_canonical.evidence import extract_with_evidence
 
     result = extract_with_evidence("design.sp", spice_format="ngspice")
     root_inventory = case_01(result.netlist)
     source_locations = case_27(result)
+
+For a top-level-only canonical file, see the complete example in ``case_01``.
+
+To save the complete extracted structure as canonical tables::
+
+    from pathlib import Path
+
+    Path("design.canonical").write_text(result.netlist.render(), encoding="utf-8")
+
+For use case 17, the selected definition and its reachable definitions already
+form a ``CanonicalNetlist`` and can be saved the same way::
+
+    selected = case_17(result.netlist, "AMP")
+    Path("amp.canonical").write_text(selected.render(), encoding="utf-8")
+
+These files contain structural netlists, not the inventory or source-location
+answers returned by other cases.
 
 Cases 1-18, 27, 28, and 30 use the implemented read-only Python API. Cases
 19-26 are deferred canonical-data edits; 29 and 31 were discarded. Their
@@ -54,7 +71,28 @@ def _device(circuit: Circuit, name: str) -> Device:
 
 
 def case_01(netlist: CanonicalNetlist) -> dict:
-    """1. Inventory direct top-level devices, nets, definitions, diagnostics."""
+    """1. Inventory direct top-level devices, nets, definitions, diagnostics.
+
+    To save just the represented top-level structure as a canonical netlist::
+
+        from dataclasses import replace
+        from pathlib import Path
+        from spice_canonical.canonical_netlist import from_file
+
+        netlist = from_file("design.sp", spice_format="ngspice")
+        top_only = replace(netlist, subcircuits=())
+        Path("top.canonical").write_text(top_only.render(), encoding="utf-8")
+
+    This preserves top-level devices, net incidence, instance pin mappings and
+    raw parameters after include expansion. Subcircuit instances remain, but
+    their definitions (including declaration defaults) are omitted. Diagnostics
+    still describe the complete extraction. The source object is unchanged.
+
+    Canonical tables do not contain raw root-scope PARAM/MODEL declarations;
+    those remain available through ``extract_with_evidence`` and ``case_30``.
+    The inventory returned below also lists definition interfaces; that list
+    is not included in the top-only file.
+    """
     return {
         "top": netlist.top,
         "devices": netlist.top.devices,
@@ -254,8 +292,9 @@ def case_16(netlist: CanonicalNetlist):
 def case_17(netlist: CanonicalNetlist, cell_name: str) -> CanonicalNetlist:
     """17. Extract a selected definition and its reachable definition closure.
 
-    Call ``case_17(netlist, name).render()`` for canonical tables. Diagnostics
-    on the projected object still describe the whole original input.
+    Save with ``Path(path).write_text(case_17(netlist, name).render(),
+    encoding="utf-8")``. Diagnostics on the projected object still describe
+    the whole original input.
     """
     return definition_library(netlist, cell_name)
 
