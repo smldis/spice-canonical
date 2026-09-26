@@ -1,9 +1,10 @@
-"""Executable recipes for the numbered SPICE Canonical use cases.
+"""Executable recipes for SPICE Canonical package use cases.
 
-This is one file of examples, not another library API. From the
+This catalog can grow as package capabilities are added. It is a file of
+examples, not another library API. From the
 ``spice-canonical`` checkout, after installing the package, use it like this::
 
-    from examples.inspection_use_cases import case_01, case_17, case_27
+    from examples.use_cases import case_01, case_17, case_27
     from spice_canonical.evidence import extract_with_evidence
 
     result = extract_with_evidence("design.sp", spice_format="ngspice")
@@ -27,11 +28,11 @@ form a ``CanonicalNetlist`` and can be saved the same way::
 These files contain structural netlists, not the inventory or source-location
 answers returned by other cases.
 
-Cases 1-18, 27, 28, and 30 use the implemented read-only Python API. Cases
-19-26 are deferred canonical-data edits; 29 and 31 were discarded. Their
-descriptions remain below so no unsupported code is mistaken for a working
-operation. The wording follows the reconstructed use-case index, not a
-verbatim record of the original brainstorming session.
+The currently implemented recipes, cases 1-18, 27, 28, and 30, use the
+read-only Python API. Cases 19-26 are deferred canonical-data edits; 29 and
+31 were discarded. Their descriptions remain below so no unsupported code is
+mistaken for a working operation. The wording follows the reconstructed
+use-case index, not a verbatim record of the original brainstorming session.
 
 All graph results describe represented terminal incidence, not electrical
 behavior. Source evidence describes the extraction snapshot and is unavailable

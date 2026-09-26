@@ -42,6 +42,10 @@ and the
 [integrated-circuit netlist corpus](docs/netlist-corpus.md) for the open
 netlists worth testing it against.
 
+The [package use-case recipes](examples/use_cases.py) show Python calls for
+common netlist questions and canonical-file exports. The implemented recipes
+currently cover read-only work; deferred editing cases are listed there too.
+
 One neighbouring surface is deliberately not part of that site.
 [`ONTOLOME.md`](ONTOLOME.md) states the contracts this unit currently
 guarantees and what it excludes on purpose, and is where a change to a contract

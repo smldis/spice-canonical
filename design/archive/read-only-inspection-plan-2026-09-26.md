@@ -2,7 +2,7 @@
 
 > Archived 2026-09-26 after the read-only implementation. The original proposal
 > is preserved below; consult the [inspection guide](../../docs/inspection.md)
-> and [executable recipes](../../examples/inspection_use_cases.py) for current usage.
+> and [executable recipes](../../examples/use_cases.py) for current usage.
 
 **Status:** proposal for later implementation, not an adopted contract. Prepared
 2026-09-26 from the operator's selected use cases and an Astra review of
