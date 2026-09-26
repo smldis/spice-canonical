@@ -2,7 +2,7 @@
 
 **Status:** reconstructed index, not a verbatim copy of the original Astra
 candidate list. Prepared 2026-09-26 from the selected scope and descriptions in
-[the read-only implementation plan](read-only-inspection-plan-2026-09-26.md).
+[the read-only implementation plan](archive/read-only-inspection-plan-2026-09-26.md).
 It records proposed user tasks, not shipped capabilities or adopted API shapes.
 
 The operator selected **1–18, 27, 28, and 30** for the read-only implementation.
@@ -44,5 +44,5 @@ Editing cases **19–26** are deferred. Cases **29** and **31** were discarded.
 
 “Top-level” in these descriptions means represented root structure after the
 selected include expansion. Graph findings concern represented terminal
-incidence, not electrical function. The [implementation plan](read-only-inspection-plan-2026-09-26.md)
-holds the current proposal and code census for the selected read-only cases.
+incidence, not electrical function. The [implementation plan](archive/read-only-inspection-plan-2026-09-26.md)
+records the original proposal and code census for the selected read-only cases.

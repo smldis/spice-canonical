@@ -1,5 +1,9 @@
 # Read-only canonical inspection: proposed implementation plan
 
+> Archived 2026-09-26 after the read-only implementation. The original proposal
+> is preserved below; consult the [inspection guide](../../docs/inspection.md)
+> and [executable recipes](../../examples/inspection_use_cases.py) for current usage.
+
 **Status:** proposal for later implementation, not an adopted contract. Prepared
 2026-09-26 from the operator's selected use cases and an Astra review of
 `src/spice_canonical/canonical_netlist.py`, `canonical_text.py`, maintained docs,
@@ -8,7 +12,7 @@ and focused tests. No code change is authorized by this document alone.
 ## Scope and boundary
 
 Plan read-only items **1–18, 27, 28, and 30** from the
-[numbered use-case index](canonical-manipulation-use-cases-2026-09-26.md).
+[numbered use-case index](../canonical-manipulation-use-cases-2026-09-26.md).
 Editing items **19–26** are deferred. Items **29** (general top-level
 directives) and **31** (ngspice title/control text) are discarded. The operator
 will call Python directly; add no CLI options. Do not change the simulator deck,
