@@ -19,6 +19,10 @@ To save the complete extracted structure as canonical tables::
 
     Path("design.canonical").write_text(result.netlist.render(), encoding="utf-8")
 
+Rendered tables omit diagnostics by default. To retain them in a saved file,
+pass ``include_diagnostics=True`` to ``render()``. CLI warnings are a separate
+stderr stream.
+
 For use case 17, the selected definition and its reachable definitions already
 form a ``CanonicalNetlist`` and can be saved the same way::
 
@@ -88,7 +92,8 @@ def case_01(netlist: CanonicalNetlist) -> dict:
     raw parameters after include expansion. Subcircuit instances remain, but
     their definitions (including declaration defaults) are omitted. Calls to
     those definitions become named black boxes; already external black boxes
-    remain as they were. Diagnostics still describe the complete extraction.
+    remain as they were. The source object retains input-wide diagnostics;
+    rendered tables include them only with ``render(include_diagnostics=True)``.
     The source object is unchanged.
 
     Canonical tables do not contain raw root-scope PARAM/MODEL declarations;
@@ -297,7 +302,7 @@ def case_17(netlist: CanonicalNetlist, cell_name: str) -> CanonicalNetlist:
 
     Save with ``Path(path).write_text(case_17(netlist, name).render(),
     encoding="utf-8")``. Diagnostics on the projected object still describe
-    the whole original input.
+    the whole original input, but are omitted from rendered tables by default.
     """
     return definition_library(netlist, cell_name)
 
