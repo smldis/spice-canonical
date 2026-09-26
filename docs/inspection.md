@@ -8,7 +8,7 @@ It does not contain every statement physically in the root file.
 from collections import Counter
 from spice_canonical.canonical_netlist import from_file
 from spice_canonical.inspect import (
-    circuit_report, definition, definition_library, net_incidence,
+    circuit_report, definition, definition_library, top_level_netlist, net_incidence,
     resolve_call, reachable_definitions, expand, Connectivity, Node,
 )
 
@@ -36,6 +36,7 @@ call_sites = [(c, d) for c in circuits for d in c.devices
               if resolve_call(netlist, d).definition is cell]
 closure = reachable_definitions(netlist, cell)
 library_text = definition_library(netlist, "AMP").render()
+top_text = top_level_netlist(netlist).render()
 
 view = expand(netlist, max_depth=8, max_objects=10000)
 counts = Counter(o.device.type for o in view.occurrences if o.status == "primitive")
@@ -53,6 +54,9 @@ The examples use illustrative cell/net names. `circuit_report` is a Python
 report, not a new file format. Its call references expose interfaces/defaults;
 it does not traverse their bodies. Diagnostics remain input-wide. Parameter
 values are never evaluated, and defaults remain separate from overrides.
+`top_level_netlist` omits definition bodies and marks calls to those omitted
+definitions as named black boxes. Existing external black boxes retain their
+pin basis; unresolved and ambiguous calls are not given guessed identities.
 
 Graph paths are structural incidence, not conduction or signal flow. Coupling
 and control references stored in parameters add no graph edges. A graph of an

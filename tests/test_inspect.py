@@ -2,9 +2,10 @@ from collections import Counter
 
 import pytest
 
-from spice_canonical.canonical_netlist import from_text, normalize_device_types, from_canonical_text
+from spice_canonical.canonical_netlist import BlackBox, from_text, normalize_device_types, from_canonical_text
 from spice_canonical.inspect import (net_incidence, definition, resolve_call, reachable_definitions,
-                                     definition_library, circuit_report, expand, Connectivity, Node)
+                                     definition_library, top_level_netlist, circuit_report, expand,
+                                     Connectivity, Node)
 
 
 def fixture():
@@ -28,6 +29,44 @@ def test_direct_inventory_recipes_and_projection():
     assert reachable_definitions(data, data.top) == (body,)
     with pytest.raises(KeyError):
         definition(data, 'absent')
+
+
+def test_top_level_export_marks_removed_definitions_but_preserves_existing_boxes():
+    data = from_text('.subckt CELL A B W=1\nR1 A B {W}\n.ends\n'
+                     'Xknown in out CELL W=3\nXexternal out 0 MISSING\nRtop in 0 2k\n')
+    data = normalize_device_types(data, {'CELL': 'normalized_cell'})
+    projected = top_level_netlist(data)
+    saved = from_canonical_text(projected.render())
+
+    assert projected.subcircuits == ()
+    assert saved == projected
+    known, external, primitive = saved.top.devices
+    assert known.black_box == BlackBox('CELL', 'named')
+    assert external.black_box == data.top.devices[1].black_box == BlackBox('MISSING', 'positional')
+    assert primitive.black_box is None
+    assert known.connections == data.top.devices[0].connections
+    assert known.parameters == data.top.devices[0].parameters
+    assert resolve_call(saved, known).status == 'opaque'
+    assert resolve_call(saved, external).status == 'opaque'
+    assert data.top.devices[0].black_box is None
+    assert 'BLACK_BOX_TABLE TOP' in saved.render()
+
+
+def test_selected_definition_export_preserves_reachable_structure_and_diagnostics():
+    data = from_text('.subckt LEAF A W=2\nR1 A 0 {W}\n.ends\n'
+                     '.subckt ROOT A\nXleaf A LEAF W=3\nXexternal A UNKNOWN\n.ends\n'
+                     'Xtop in ROOT\n')
+    selected = definition_library(data, 'ROOT')
+    saved = from_canonical_text(selected.render())
+
+    assert saved == selected
+    assert saved.top.devices == ()
+    assert [c.name for c in saved.subcircuits] == ['ROOT', 'LEAF']
+    assert saved.subcircuits == (data.subcircuits[1], data.subcircuits[0])
+    assert saved.diagnostics == data.diagnostics
+    assert [resolve_call(saved, device).status for device in saved.subcircuits[0].devices] == [
+        'implemented', 'opaque',
+    ]
 
 
 def test_incidence_case_spelling_and_terminal_multiplicity():

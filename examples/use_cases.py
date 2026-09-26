@@ -76,18 +76,20 @@ def case_01(netlist: CanonicalNetlist) -> dict:
 
     To save just the represented top-level structure as a canonical netlist::
 
-        from dataclasses import replace
         from pathlib import Path
         from spice_canonical.canonical_netlist import from_file
+        from spice_canonical.inspect import top_level_netlist
 
         netlist = from_file("design.sp", spice_format="ngspice")
-        top_only = replace(netlist, subcircuits=())
+        top_only = top_level_netlist(netlist)
         Path("top.canonical").write_text(top_only.render(), encoding="utf-8")
 
     This preserves top-level devices, net incidence, instance pin mappings and
     raw parameters after include expansion. Subcircuit instances remain, but
-    their definitions (including declaration defaults) are omitted. Diagnostics
-    still describe the complete extraction. The source object is unchanged.
+    their definitions (including declaration defaults) are omitted. Calls to
+    those definitions become named black boxes; already external black boxes
+    remain as they were. Diagnostics still describe the complete extraction.
+    The source object is unchanged.
 
     Canonical tables do not contain raw root-scope PARAM/MODEL declarations;
     those remain available through ``extract_with_evidence`` and ``case_30``.

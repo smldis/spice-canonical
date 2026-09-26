@@ -128,3 +128,13 @@ unrecoverable. Inspection reports observable ambiguity rather than inventing
 missing history. This is a useful limit of the present representation, not proof
 that normalization is a complete provenance mechanism. Prototype maturity is
 unchanged.
+
+Top-level canonical export is a projection with a changed availability boundary:
+implemented calls whose definitions are omitted become named black boxes in the
+saved artifact. Already external calls keep their existing markers; ambiguous
+calls are not assigned a guessed identity. This keeps the artifact's explicit
+boundary inventory aligned with the bodies it actually contains.
+An authored `source_type` collision can still lose its ambiguous call status
+when projection omits the candidate definitions; the current tables have no
+explicit ambiguity marker. This is an observed limit, not a claim that the
+call has a known missing target.

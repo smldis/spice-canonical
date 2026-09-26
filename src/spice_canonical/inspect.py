@@ -4,10 +4,10 @@ Names match case-insensitively. Parameters remain ordered and unevaluated.
 Graph edges mean terminal incidence, never conduction, signal flow, or coupling.
 """
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 
-from .canonical_netlist import CanonicalNetlist, Circuit, Device, Diagnostic
+from .canonical_netlist import BlackBox, CanonicalNetlist, Circuit, Device, Diagnostic
 
 
 @dataclass(frozen=True)
@@ -103,6 +103,25 @@ def reachable_definitions(netlist: CanonicalNetlist, root: Circuit) -> tuple[Cir
         result.append(body)
         pending.extend(reversed(body.devices))
     return tuple(result)
+
+
+def top_level_netlist(netlist: CanonicalNetlist) -> CanonicalNetlist:
+    """Project the root for saved tables, marking omitted implementations opaque.
+
+    Calls to definitions in ``netlist`` retain their known formal pin names,
+    nets, and raw overrides, but become named black boxes because their bodies
+    are absent from the result. Existing external boundaries and unresolved or
+    ambiguous device rows are left unmarked. An ambiguous call's resolved status
+    can change when its candidate definitions are omitted. Diagnostics still
+    describe the full input.
+    """
+    devices = []
+    for device in netlist.top.devices:
+        call = resolve_call(netlist, device)
+        if call.status == 'implemented':
+            device = replace(device, black_box=BlackBox(call.definition.name, 'named'))
+        devices.append(device)
+    return replace(netlist, top=replace(netlist.top, devices=tuple(devices)), subcircuits=())
 
 
 def definition_library(netlist: CanonicalNetlist, name: str) -> CanonicalNetlist:
