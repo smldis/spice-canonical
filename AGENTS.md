@@ -13,19 +13,18 @@ data consumed by decomposition, in the closest containing ontology.
 
 ## Where to read, and what to trust
 
-Two surfaces here, deliberately separate. Know which one you are in.
+Three surfaces here, deliberately separate. Know which one you are in.
 
 | Surface | Where | Maintained against the code? |
 | --- | --- | --- |
 | **Self-study** — evolving understanding, including commitments, evidence, assumptions, and open questions | `ONTOLOME.md` | **Yes.** Refine it when work yields useful insight; update commitments explicitly when they change. Not published. |
 | **Documentation** — the format, the parser, and the corpus | `docs/` | **Yes.** Everything under `docs/` is published to the Sphinx site by `python composition.py docs` from the repository root. |
+| **Dated proposals** — candidate work and code census | `design/` | **No.** These files record proposals at a date and are not evidence of current behavior. Not published. |
 
-There is no third surface: this unit has **no `design/` directory**. If you
-create one, the same rule applies as everywhere else in this repository — a
-`design/` file is written on a date, never edited to stay true, never
-published, and **never evidence of current behaviour**. Do not cite one, and do
-not update one to match the code; promote what is still right into `docs/` or
-`ONTOLOME.md` instead.
+The `design/` files are dated, never edited merely to stay true, never
+published, and **never evidence of current behaviour**. Do not cite one as a
+current contract or update one to match code; promote what is still right into
+`docs/` or `ONTOLOME.md` instead.
 
 Nothing published may link to `ONTOLOME.md` or to any unpublished file. Sphinx
 cannot resolve the target and it becomes a build warning; name such files as

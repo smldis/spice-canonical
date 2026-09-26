@@ -70,9 +70,11 @@ Two ideas carry the rest:
 | If you want to | Read |
 | --- | --- |
 | consume the output, or write a reverse converter | [The canonical representation](representation.md) |
+| query structure, hierarchy, source evidence, or connectivity from Python | [Python inspection](inspection.md) |
 | run the extractor from Python or the command line | [Extracting a canonical netlist](extraction.md) |
 | know which dialects and devices are handled | [Supported extraction](extraction.md#supported-extraction) |
 | keep a vendor model library opaque | [Includes and boundaries](extraction.md#includes-and-boundaries) |
+| use Codex to extract or inspect canonical netlists | [SPICE Canonical skill](agent-skill.md) |
 | find real netlists to test or extend it against | [Integrated-circuit netlist R&D corpus](netlist-corpus.md) |
 
 ## What state this is in
@@ -96,6 +98,8 @@ excludes on purpose.
 
 representation
 extraction
+inspection
+agent-skill
 netlist-corpus
 api
 ```
