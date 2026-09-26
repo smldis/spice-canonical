@@ -1,0 +1,1 @@
+../../../skills/spice-canonical/SKILL.md

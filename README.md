@@ -37,12 +37,17 @@ and `DIAGNOSTICS` tables preserve boundaries and warnings through saved files.
 `python composition.py docs` from the repository root. Start with
 [the canonical representation](docs/representation.md) if you consume the
 output, [extracting a canonical netlist](docs/extraction.md) if you run the
-parser, and the
+parser, [the agent skill](docs/agent-skill.md) if you use Codex to operate it,
+and the
 [integrated-circuit netlist corpus](docs/netlist-corpus.md) for the open
 netlists worth testing it against.
+
+The [package use-case recipes](examples/use_cases.py) show Python calls for
+common netlist questions and canonical-file exports. The implemented recipes
+currently cover read-only work; deferred editing cases are listed there too.
 
 One neighbouring surface is deliberately not part of that site.
 [`ONTOLOME.md`](ONTOLOME.md) states the contracts this unit currently
 guarantees and what it excludes on purpose, and is where a change to a contract
-must be recorded. There is no `design/` directory here: nothing in this unit's
-documentation is spent working material.
+must be recorded. The unpublished `design/` directory holds dated proposals,
+not descriptions of current behavior.

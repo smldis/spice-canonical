@@ -100,3 +100,31 @@ loading must keep the top-level circuit outside the subcircuit-definition name
 scope. The same distinction keeps an undefined external cell named `TOP`
 unavailable even when `TOP_LEVEL TOP` exists. This refines artifact validation;
 it does not add a new source-language interpretation.
+
+
+## Read-only inspection and source evidence
+
+The Python inspection surface now composes existing immutable circuit data with
+shared incidence, call resolution, definition closure, bounded occurrence
+expansion, and terminal-incidence graph queries. The renderer uses the same
+incidence helper. Direct reports describe the root after include expansion;
+root and definition namespaces stay separate. Defaults and overrides remain
+ordered and unevaluated. Graph adjacency excludes coupling/control relationships
+stored only as parameters and makes no electrical or functional claim.
+
+An optional file-extraction result carries source locations, include occurrences
+and outcomes, and raw lexical root-scope PARAM/MODEL declarations alongside the
+canonical result. This revises the earlier blanket omission of global declaration
+evidence, while retaining the exclusion on parameter/model interpretation.
+Evidence is a snapshot, separate from canonical serialization: saved connectivity
+alone cannot recover it. General directives, title and control scripts remain
+excluded. Include evidence describes current extractor traversal, not simulator
+control semantics. No new CLI surface or editing operation is provided.
+
+Bounded expansion exposes opaque, recursive, ambiguous and truncated boundaries;
+additional global nets are caller-supplied. Existing normalization stores original
+types in raw source_type parameters, so authored collisions can leave identity
+unrecoverable. Inspection reports observable ambiguity rather than inventing
+missing history. This is a useful limit of the present representation, not proof
+that normalization is a complete provenance mechanism. Prototype maturity is
+unchanged.

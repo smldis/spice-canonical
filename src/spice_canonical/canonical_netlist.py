@@ -118,6 +118,8 @@ class _LogicalStatement:
     line: int
     text: str
     source: Path | None = None
+    include: int | None = None
+    order: int = 0
 
 
 @dataclass(frozen=True)
@@ -219,6 +221,13 @@ def from_file(
     boundary. Missing includes and include cycles are reported as diagnostics.
     """
 
+    return _extract_file(path, top_name=top_name, spice_format=spice_format,
+                         stop_include=stop_include, external_subcircuits=external_subcircuits,
+                         device_type_map=device_type_map)
+
+
+def _extract_file(path, *, top_name, spice_format, stop_include,
+                  external_subcircuits, device_type_map, evidence=None):
     spice_format = _validate_spice_format(spice_format)
     input_path = Path(path).expanduser().resolve()
     diagnostics: list[Diagnostic] = []
@@ -230,6 +239,7 @@ def from_file(
             spice_format=spice_format,
             is_root=True,
             stop_include=stop_include,
+            evidence=evidence,
         )
     )
     netlist = _from_statements(
@@ -238,6 +248,7 @@ def from_file(
         spice_format=spice_format,
         initial_diagnostics=diagnostics,
         external_subcircuits=external_subcircuits or {},
+        evidence=evidence,
     )
     return normalize_device_types(netlist, device_type_map or {})
 
@@ -291,6 +302,7 @@ def _from_statements(
     spice_format: SpiceFormat,
     initial_diagnostics: Sequence[Diagnostic] = (),
     external_subcircuits: Mapping[str, Sequence[str]] = {},
+    evidence=None,
 ) -> CanonicalNetlist:
     top = _CircuitBuilder(name=top_name, pins=(), raw_devices=[])
     subcircuits: list[_CircuitBuilder] = []
@@ -321,6 +333,10 @@ def _from_statements(
                 continue
             if in_control:
                 continue
+        if evidence is not None and current is top and keyword in {".param", ".model"}:
+            evidence.declaration(keyword[1:].upper(), statement)
+        if evidence is not None and keyword == ".lib":
+            evidence.include(statement, None, "opaque")
         if keyword == ".subckt":
             if current is not top:
                 raise CanonicalParseError(
@@ -335,6 +351,8 @@ def _from_statements(
             current = _CircuitBuilder(
                 name=name, pins=pins, raw_devices=[], parameter_defaults=defaults
             )
+            if evidence is not None:
+                evidence.object(name, None, statement)
             subcircuits.append(current)
             subcircuits_by_name[key] = current
             continue
@@ -355,6 +373,8 @@ def _from_statements(
             continue
         if tokens[0].startswith("."):
             continue
+        if evidence is not None:
+            evidence.object(None if current is top else current.name, tokens[0], statement)
         current.raw_devices.append(
             _RawDevice(statement.line, tokens, source=statement.source)
         )
@@ -398,6 +418,8 @@ def _statements_from_file(
     spice_format: SpiceFormat,
     is_root: bool,
     stop_include: Sequence[str],
+    evidence=None,
+    include: int | None = None,
 ) -> Iterable[_LogicalStatement]:
     resolved = path.resolve()
     text = resolved.read_text(encoding="utf-8")
@@ -409,11 +431,15 @@ def _statements_from_file(
         semicolon_comments=spice_format == "ngspice",
         skip_title=spice_format == "ngspice" and is_root,
     ):
+        statement = replace(statement, include=include,
+                            order=evidence.advance() if evidence is not None else 0)
         tokens = tuple(_split_tokens(statement.text))
         if not tokens or tokens[0].casefold() not in {".include", ".inc"}:
             yield statement
             continue
         if len(tokens) < 2:
+            if evidence is not None:
+                evidence.include(statement, None, "malformed")
             diagnostics.append(
                 Diagnostic(
                     statement.line,
@@ -425,8 +451,12 @@ def _statements_from_file(
 
         include_path = _resolve_include_path(tokens[1], parent=resolved.parent)
         if _include_is_boundary(include_path, stop_include):
+            if evidence is not None:
+                evidence.include(statement, include_path, "stopped")
             continue
         if include_path in current_active:
+            if evidence is not None:
+                evidence.include(statement, include_path, "cyclic")
             chain = " -> ".join(str(item) for item in (*current_active, include_path))
             diagnostics.append(
                 Diagnostic(
@@ -437,6 +467,8 @@ def _statements_from_file(
             )
             continue
         if not include_path.is_file():
+            if evidence is not None:
+                evidence.include(statement, include_path, "missing")
             diagnostics.append(
                 Diagnostic(
                     statement.line,
@@ -445,6 +477,7 @@ def _statements_from_file(
                 )
             )
             continue
+        event = evidence.include(statement, include_path, "expanded") if evidence is not None else None
         try:
             yield from _statements_from_file(
                 include_path,
@@ -453,8 +486,12 @@ def _statements_from_file(
                 spice_format=spice_format,
                 is_root=False,
                 stop_include=stop_include,
+                evidence=evidence,
+                include=event,
             )
         except (OSError, UnicodeError) as exc:
+            if evidence is not None:
+                evidence.includes[event] = replace(evidence.includes[event], outcome="unreadable")
             diagnostics.append(
                 Diagnostic(
                     statement.line,
@@ -871,20 +908,14 @@ def _render_defaults(circuit: Circuit) -> str:
 
 
 def _render_circuit_tables(circuit: Circuit) -> str:
-    incidents: dict[str, tuple[str, list[str]]] = {}
-    for pin in circuit.pins:
-        incidents.setdefault(pin.casefold(), (pin, []))
-    for device in circuit.devices:
-        for connection in device.connections:
-            _, references = incidents.setdefault(
-                connection.net.casefold(), (connection.net, [])
-            )
-            references.append(f"{_item(device.name, ',. ')}.{_item(connection.pin, ',. ')}")
+    from .inspect import net_incidence
+    incidents = net_incidence(circuit)
 
     net_lines = [f"NET_INCIDENT_TABLE {_cell(circuit.name)}", "net | incident pins"]
     net_lines.extend(
-        f"{_cell(net)} | {', '.join(references)}"
-        for net, references in incidents.values()
+        f"{_cell(net.name)} | " + ', '.join(
+            f"{_item(ref.device, ',. ')}.{_item(ref.pin, ',. ')}" for ref in net.terminals)
+        for net in incidents
     )
 
     device_lines = [
