@@ -36,7 +36,7 @@ def test_top_level_export_marks_removed_definitions_but_preserves_existing_boxes
                      'Xknown in out CELL W=3\nXexternal out 0 MISSING\nRtop in 0 2k\n')
     data = normalize_device_types(data, {'CELL': 'normalized_cell'})
     projected = top_level_netlist(data)
-    saved = from_canonical_text(projected.render())
+    saved = from_canonical_text(projected.render(include_diagnostics=True))
 
     assert projected.subcircuits == ()
     assert saved == projected
@@ -50,6 +50,7 @@ def test_top_level_export_marks_removed_definitions_but_preserves_existing_boxes
     assert resolve_call(saved, external).status == 'opaque'
     assert data.top.devices[0].black_box is None
     assert 'BLACK_BOX_TABLE TOP' in saved.render()
+    assert 'DIAGNOSTICS' not in projected.render()
 
 
 def test_selected_definition_export_preserves_reachable_structure_and_diagnostics():
@@ -57,7 +58,7 @@ def test_selected_definition_export_preserves_reachable_structure_and_diagnostic
                      '.subckt ROOT A\nXleaf A LEAF W=3\nXexternal A UNKNOWN\n.ends\n'
                      'Xtop in ROOT\n')
     selected = definition_library(data, 'ROOT')
-    saved = from_canonical_text(selected.render())
+    saved = from_canonical_text(selected.render(include_diagnostics=True))
 
     assert saved == selected
     assert saved.top.devices == ()

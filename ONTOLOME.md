@@ -94,6 +94,11 @@ structural punctuation is escaped before rendering and decoded after splitting.
 Missing library bodies stay unavailable. This is a data handoff, not simulator
 serialization, inferred pin semantics or an algorithm-quality improvement.
 Prototype maturity is unchanged.
+Rendered canonical tables now omit diagnostic rows by default; an explicit
+render/CLI flag includes them. Extraction still retains diagnostics in Python,
+CLI warnings remain a separate stderr stream, and strict mode still tests the
+extraction result. This makes the structural artifact the default while leaving
+the full diagnostic record available by choice.
 
 Review of an extracted `.SUBCKT TOP` with top-level devices showed that table
 loading must keep the top-level circuit outside the subcircuit-definition name

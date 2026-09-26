@@ -81,8 +81,13 @@ class CanonicalNetlist:
     subcircuits: tuple[Circuit, ...]
     diagnostics: tuple[Diagnostic, ...] = ()
 
-    def render(self) -> str:
-        """Render the canonical tabular representation."""
+    def render(self, *, include_diagnostics: bool = False) -> str:
+        """Render canonical tables, optionally appending extraction diagnostics.
+
+        Diagnostics remain available on this object. The default artifact is
+        structural; pass ``include_diagnostics=True`` to serialize the complete
+        extraction record for a diagnostic-preserving round trip.
+        """
 
         sections = []
         if self.top.devices or self.top.name != 'TOP' or self.top.pins or self.top.parameter_defaults:
@@ -93,7 +98,7 @@ class CanonicalNetlist:
             )
         for circuit in self.subcircuits:
             sections.append(_render_subcircuit(circuit))
-        if self.diagnostics:
+        if include_diagnostics and self.diagnostics:
             sections.append("\n".join([
                 'DIAGNOSTICS', 'source | line | message',
                 *(' | '.join((_cell(str(d.source)) if d.source is not None else '',
@@ -1113,7 +1118,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="fail when any device cannot be completely resolved",
+        help="fail when extraction emits any diagnostics",
+    )
+    parser.add_argument(
+        "--include-diagnostics",
+        action="store_true",
+        help="append extraction diagnostics to canonical tables",
     )
     parser.add_argument(
         "--stop-include",
@@ -1190,7 +1200,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.strict and netlist.diagnostics:
         return 2
 
-    rendered = netlist.render()
+    rendered = netlist.render(include_diagnostics=args.include_diagnostics)
     try:
         if args.output is None:
             sys.stdout.write(rendered)

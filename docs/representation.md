@@ -221,7 +221,9 @@ or `positional`. The Python equivalent is `Device.black_box = BlackBox(cell,
 pin_basis)`; ordinary devices and implemented calls have `black_box=None`.
 This states neither an implementation nor electrical equivalence.
 
-An optional final table preserves extraction diagnostics:
+An optional final table preserves extraction diagnostics. `render()` omits it by
+default; `render(include_diagnostics=True)` or the CLI's
+`--include-diagnostics` flag adds it:
 
 ```text
 DIAGNOSTICS
@@ -232,14 +234,14 @@ source | line | message
 An empty source cell represents no source path. Paths are evidence only: loading
 a canonical artifact never opens its original source, includes or libraries.
 The reader preserves defaults, duplicate parameter entries, unused interface
-pins, black-box markers and diagnostics. It requires blank lines between table
-blocks, rejects unknown/duplicate tables and invalid fields, and checks reciprocal
-net/device incidence. The top-level circuit and subcircuit definitions have
+pins, black-box markers and any included diagnostics. It requires blank lines
+between table blocks, rejects unknown/duplicate tables and invalid fields, and
+checks reciprocal net/device incidence. The top-level circuit and subcircuit definitions have
 separate name scopes: a `.SUBCKT TOP` may coexist with `TOP_LEVEL TOP`, and a
 black-box cell called `TOP` does not imply an implementation in the top-level
 circuit. Device/net row ordering need not agree. Files rendered by
 older versions without metadata tables remain readable when unambiguous, but
-diagnostics absent from those files cannot be recovered.
+diagnostics absent from a saved file cannot be recovered from that file.
 
 ## Annotations
 

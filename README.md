@@ -28,8 +28,11 @@ offline.
 Saved canonical tables can be read back with `from_canonical_file("canonical.txt")`
 from `spice_canonical.canonical_netlist`. External cells retain explicit black-box
 interfaces: `--external-subcircuits pins.json` supplies ordered formal names;
-otherwise terminals are positional `@1`, `@2`, etc. Optional `BLACK_BOX_TABLE`
-and `DIAGNOSTICS` tables preserve boundaries and warnings through saved files.
+otherwise terminals are positional `@1`, `@2`, etc. `BLACK_BOX_TABLE` rows
+preserve boundaries through saved files. Diagnostic rows are omitted by
+default; use `render(include_diagnostics=True)` or CLI
+`--include-diagnostics` to retain them in the artifact. CLI warnings remain on
+stderr.
 
 ## Documentation
 

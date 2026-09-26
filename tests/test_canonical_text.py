@@ -24,7 +24,7 @@ def test_extract_save_read_preserves_named_and_positional_boundaries(tmp_path, c
     assert resistor.black_box == BlackBox('res_cell', 'positional')
     assert mos.parameters[-1] == Parameter('source_type', 'nmos_lvt')
     artifact = tmp_path / 'saved.canonical'
-    artifact.write_text(data.render())
+    artifact.write_text(data.render(include_diagnostics=True))
     source.unlink()
     assert from_canonical_file(artifact) == data
     assert len(data.diagnostics) == 2  # missing include and unnamed resistor; .LIB is a boundary
@@ -37,6 +37,9 @@ def test_cli_emits_reusable_custom_tables(tmp_path, capsys):
     expected = from_file(source)
     assert main([str(source), '--output', str(target)]) == 0
     assert 'warning:' in capsys.readouterr().err
+    assert from_canonical_file(target).diagnostics == ()
+    assert 'DIAGNOSTICS' not in target.read_text()
+    assert main([str(source), '--output', str(target), '--include-diagnostics']) == 0
     assert from_canonical_file(target) == expected
 
 
@@ -49,7 +52,9 @@ def test_escaped_delimiters_defaults_diagnostics_and_unused_pins_round_trip():
     circuit = Circuit('C|x', ('unused',), (device,), (Parameter('W', '{A / 2}'),))
     data = CanonicalNetlist(Circuit('custom_root', (), ()), (circuit,),
                            (Diagnostic(7, 'a|b\\c\nmessage', Path('/missing/a|b')),))
-    assert from_canonical_text(data.render()) == data
+    assert 'DIAGNOSTICS' not in data.render()
+    assert from_canonical_text(data.render()).diagnostics == ()
+    assert from_canonical_text(data.render(include_diagnostics=True)) == data
 
 
 @pytest.mark.parametrize('source', ['', '.subckt C A B\n.ends\n', 'R1 a 0 1k\n'])
@@ -93,4 +98,4 @@ def test_top_name_is_not_a_subcircuit_definition_or_external_cell(tmp_path):
     source.write_text('X1 out TOP gain={max(1, 2)}\nR1 out 0 1k\n')
     external = from_file(source)
     assert external.top.devices[0].black_box == BlackBox('TOP', 'positional')
-    assert from_canonical_text(external.render()) == external
+    assert from_canonical_text(external.render(include_diagnostics=True)) == external

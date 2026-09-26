@@ -41,6 +41,9 @@ A `Device` carries `name`, `type`, `connections`, and `parameters`; subcircuit
 instance parameters remain explicit overrides. `render()` produces the tabular
 text, including a `PARAMETER_DEFAULTS` table for definitions with defaults.
 `normalize_device_types` preserves circuit defaults.
+`render()` omits diagnostic rows by default; use
+`render(include_diagnostics=True)` when the saved table should retain them.
+The `CanonicalNetlist.diagnostics` field remains available either way.
 
 Header defaults accept assignments with or without `PARAMS:` (also `PARAM:`),
 spaces on either side of `=`, leading `+` continuations, and quoted or grouped
@@ -57,7 +60,8 @@ into instances. Global `.PARAM` semantics and model-body interpretation remain
 deferred and omitted from canonical data (the existing `.MODEL` name/type
 refinement still applies). Use `from_canonical_file("canonical.txt")` or
 `from_canonical_text(text)` from the same module to reload saved custom tables.
-They preserve diagnostics and black-box interfaces without reopening SPICE files.
+They preserve black-box interfaces and any diagnostic rows explicitly included
+in the saved file without reopening SPICE files.
 
 A netlist that is structurally inconsistent rather than merely incomplete raises
 `CanonicalParseError` — a duplicate device name within one circuit, an instance
@@ -71,11 +75,14 @@ spice-canonical input.spi --output canonical.txt
 spice-canonical input.spi --top-name CHIP
 spice-canonical input.spi --strict
 spice-canonical input.cir --format ngspice --strict
+spice-canonical input.cir --include-diagnostics --output with-diagnostics.txt
 spice-canonical input.cir --device-type-map device-types.json
 ```
 
-Without `--output`, the representation is written to standard output. Warnings
-are written to standard error. `--strict` returns a failure when any statement
+Without `--output`, the representation is written to standard output.
+`--include-diagnostics` adds a diagnostic table to that output; by default the
+table is omitted. Warnings are written to standard error independently.
+`--strict` returns a failure when any statement
 cannot be completely resolved. A `CanonicalParseError`, an unreadable input, or
 malformed JSON exits with status 2 and an `error:` line.
 
