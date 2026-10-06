@@ -10,6 +10,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable, Literal, Mapping, Sequence, cast
 
+from .extensions import (
+    CanonicalExtensions, ExtensionColumns, ExtensionNamespace, ExtensionScope,
+    ExtensionTable,
+)
+
 
 SpiceFormat = Literal["eldo", "ngspice"]
 SUPPORTED_SPICE_FORMATS: tuple[SpiceFormat, ...] = ("eldo", "ngspice")
@@ -80,15 +85,24 @@ class CanonicalNetlist:
     top: Circuit
     subcircuits: tuple[Circuit, ...]
     diagnostics: tuple[Diagnostic, ...] = ()
+    extensions: CanonicalExtensions = CanonicalExtensions()
 
-    def render(self, *, include_diagnostics: bool = False) -> str:
-        """Render canonical tables, optionally appending extraction diagnostics.
+    def render(self, *, include_diagnostics: bool | None = None,
+               include_extensions: bool = True) -> str:
+        """Render a preserving extended artifact or an explicit core projection.
 
         Diagnostics remain available on this object. The default artifact is
-        structural; pass ``include_diagnostics=True`` to serialize the complete
-        extraction record for a diagnostic-preserving round trip.
+        structural for plain inputs; pass ``include_diagnostics=True`` for their
+        complete extraction record. Extensions preserve diagnostics by default.
+        ``include_extensions=False`` explicitly drops annotations and follows
+        the plain diagnostic default. A changed attached snapshot is rejected.
         """
 
+        if not isinstance(self.extensions, CanonicalExtensions):
+            raise ValueError("expected a CanonicalExtensions envelope")
+        if include_extensions and self.extensions:
+            from .extensions import render_extended
+            return render_extended(self, include_diagnostics=include_diagnostics)
         sections = []
         if self.top.devices or self.top.name != 'TOP' or self.top.pins or self.top.parameter_defaults:
             sections.append(
@@ -105,6 +119,41 @@ class CanonicalNetlist:
                               str(d.line), _cell(d.message))) for d in self.diagnostics),
             ]))
         return "\n\n".join(sections) + ("\n" if sections else "")
+
+    def with_namespace(self, name: str, version: int) -> CanonicalNetlist:
+        """Declare a project schema without loading its producer."""
+        from .extensions import declare_namespace
+        return declare_namespace(self, name, version)
+
+    def with_table(self, table: ExtensionTable) -> CanonicalNetlist:
+        """Add or replace one custom table, preserving all other namespaces."""
+        from .extensions import put_table
+        return put_table(self, table)
+
+    def with_column(self, namespace: str, name: str, *, table: str,
+                    values: Mapping[str | int, str] | Sequence[str],
+                    scope: ExtensionScope = ExtensionScope()) -> CanonicalNetlist:
+        """Add/replace a column; mapping omissions become empty string cells."""
+        from .extensions import put_column
+        return put_column(self, namespace, name, table=table, values=values, scope=scope)
+
+    def without_namespace(self, namespace: str) -> CanonicalNetlist:
+        from .extensions import remove_namespace
+        return remove_namespace(self, namespace)
+
+    def without_table(self, namespace: str, name: str,
+                      scope: ExtensionScope = ExtensionScope()) -> CanonicalNetlist:
+        from .extensions import remove_table
+        return remove_table(self, namespace, name, scope)
+
+    def without_column(self, namespace: str, name: str, *, table: str,
+                       scope: ExtensionScope = ExtensionScope()) -> CanonicalNetlist:
+        from .extensions import remove_column
+        return remove_column(self, namespace, name, table=table, scope=scope)
+
+    def without_extensions(self) -> CanonicalNetlist:
+        """Explicitly discard annotations, including those on a changed core."""
+        return replace(self, extensions=CanonicalExtensions())
 
 
 def from_canonical_text(text: str) -> CanonicalNetlist:
@@ -267,6 +316,7 @@ def normalize_device_types(
     type as a ``source_type`` parameter.  An empty map is an identity pass.
     """
 
+    netlist.extensions.validate(netlist)
     aliases = {source.casefold(): target for source, target in device_type_map.items()}
     if not aliases:
         return netlist
@@ -293,11 +343,14 @@ def normalize_device_types(
             )
         return replace(circuit, devices=tuple(devices))
 
-    return CanonicalNetlist(
+    result = replace(
+        netlist,
         top=normalize_circuit(netlist.top),
         subcircuits=tuple(normalize_circuit(item) for item in netlist.subcircuits),
         diagnostics=netlist.diagnostics,
     )
+    result.extensions.validate(result)
+    return result
 
 
 def _from_statements(
@@ -947,7 +1000,10 @@ def _render_circuit_tables(circuit: Circuit) -> str:
 
 
 def _cell(value: str) -> str:
-    value = value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    escapes = {"\\": "\\\\", "|": "\\|", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+    value = ''.join(escapes.get(char, f"\\u{ord(char):04x}" if
+                    ord(char) < 32 or 127 <= ord(char) <= 159 or
+                    (char != ' ' and char.isspace()) else char) for char in value)
     if not value.strip(' '):
         return '\\s' * len(value)
     return ('\\s' * (len(value) - len(value.lstrip(' '))) + value.strip(' ') +

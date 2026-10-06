@@ -58,6 +58,14 @@ values are never evaluated, and defaults remain separate from overrides.
 definitions as named black boxes. Existing external black boxes retain their
 pin basis; unresolved and ambiguous calls are not given guessed identities.
 
+On extension-bearing snapshots, top-only and definition-library export require
+explicit `netlist.without_extensions()` first. Their scope changes cannot safely
+rewrite references in arbitrary producer tables. Read-only reports, connectivity
+and expansion still consume the structural view without modifying the envelope.
+Type normalization preserves extensions only when the represented core is
+unchanged. See [namespaced artifact data](representation.md#namespaced-tables-and-columns)
+for snapshot guards and preserving versus core-only output.
+
 Graph paths are structural incidence, not conduction or signal flow. Coupling
 and control references stored in parameters add no graph edges. A graph of an
 expansion omits expanded call vertices and uses leaf connectivity; opaque and

@@ -94,11 +94,39 @@ structural punctuation is escaped before rendering and decoded after splitting.
 Missing library bodies stay unavailable. This is a data handoff, not simulator
 serialization, inferred pin semantics or an algorithm-quality improvement.
 Prototype maturity is unchanged.
-Rendered canonical tables now omit diagnostic rows by default; an explicit
+Plain rendered canonical tables omit diagnostic rows by default; an explicit
 render/CLI flag includes them. Extraction still retains diagnostics in Python,
 CLI warnings remain a separate stderr stream, and strict mode still tests the
 extraction result. This makes the structural artifact the default while leaving
 the full diagnostic record available by choice.
+
+## Namespaced artifact data
+
+The owner requested project-defined tables and columns in a common canonical
+artifact, then adopted the conservative direction of an independent Astra
+review on 2026-10-06. Canonical now carries immutable versioned namespaces,
+document/root/definition-scoped custom tables and columns on pin, default, net,
+device, black-box and diagnostic hosts. Unknown producer schemas remain data;
+canonical owns envelope and attachment validation, never functional meaning,
+schema fetching or producer execution. Structural Circuit/Device objects remain
+unchanged. Namespace identifiers reduce accidental collisions without proving
+ownership. The original simulator deck remains authoritative.
+
+The preservation commitment is decoded payload, ordered headers/rows and correct
+attachment, including empty annotated hosts and unused declarations. Required
+host layout is metadata, not a second connectivity authority. The codec now
+distinguishes an empty cell/row and preserves Unicode whitespace and separators.
+Extended export retains diagnostics; plain export retains its earlier default.
+Core-only export and removal are explicit. An envelope is bound to the exact
+ordered core snapshot: core-changing normalization fails and projection requires
+removal. Read-only structural views do not claim to transport annotations.
+This simple boundary avoids guessing how opaque references follow edits.
+
+Attachment is not evidence validity. Loading binds the represented snapshot;
+external edits before loading are not inferred. Producers retain their own basis,
+assumptions and uncertainty. Automatic migration, annotation-aware expansion and
+universal reference/schema semantics remain unbuilt. Focused preservation and
+consumer checks exercise these boundaries; prototype maturity is unchanged.
 
 Review of an extracted `.SUBCKT TOP` with top-level devices showed that table
 loading must keep the top-level circuit outside the subcircuit-definition name

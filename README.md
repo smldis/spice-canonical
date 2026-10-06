@@ -34,6 +34,14 @@ default; use `render(include_diagnostics=True)` or CLI
 `--include-diagnostics` to retain them in the artifact. CLI warnings remain on
 stderr.
 
+Projects can declare versioned namespaces and attach custom tables or additional
+columns to canonical artifacts through immutable `with_namespace`, `with_table`
+and `with_column` operations. Unknown project schemas survive load/save without
+producer dependencies. Envelopes bind to the exact core snapshot; transformations
+require explicit removal or reauthoring. Extended exports preserve diagnostics;
+`render(include_extensions=False)` explicitly exports core-only text for older
+readers. See [the extension contract](docs/representation.md#namespaced-tables-and-columns).
+
 ## Documentation
 
 [`docs/`](docs/index.md) is the guide, built into the project's Sphinx site by
