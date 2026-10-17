@@ -47,6 +47,10 @@ label  = table_name, [ " ", scope_name ];
 header = column, { " | ", column };
 row    = cell, { " | ", cell };
 gap    = LF, LF, { LF };
+
+table_name     = core_table | qualified_name;
+column         = local_name | qualified_name;
+qualified_name = namespace, ":", local_name;
 ```
 
 The schema determines whether a scope argument is required or forbidden, the
@@ -141,6 +145,10 @@ and undeclared namespace prefixes are errors.
 ## Complete example
 
 ```text
+NAMESPACES
+namespace | version
+org.example.analysis | 1
+
 TOP_PORTS TOP
 port
 
@@ -151,8 +159,8 @@ output | X1.OUT
 0 | X1.RET
 
 DEVICES TOP
-device | type | connections | parameters
-X1 | divider | IN=input, OUT=output, RET=0 | \e
+device | type | connections | parameters | org.example.analysis:role
+X1 | divider | IN=input, OUT=output, RET=0 | \e | divider_instance
 
 SUBCKT_PORTS divider
 port
@@ -174,6 +182,10 @@ DEVICES divider
 device | type | connections | parameters
 R1 | resistor | p=IN, n=OUT | value={R}
 R2 | resistor | p=OUT, n=RET | value={R}
+
+org.example.analysis:notes divider
+text
+Synthetic producer annotation
 ```
 
 The root has no declared external ports; the definition has exactly three.
@@ -182,6 +194,11 @@ The header `port` is never an extra terminal. The file retains the raw default
 `R=10k`, without asserting an operating state, output load or simulation result.
 The same port-table shape also supports explicit root ports and namespaced
 port columns; no separate root-port table or special header rule is needed.
+`NAMESPACES` declares producer schema version 1. The qualified `role` column
+annotates X1; the qualified `notes` table belongs to the divider definition.
+These are synthetic producer data, not built-in electrical facts. Omitting the
+scope argument from a producer table makes it document-scoped. The declaration
+must precede use, and unknown declared schemas must still be preserved.
 
 ## Other simplifications considered
 
