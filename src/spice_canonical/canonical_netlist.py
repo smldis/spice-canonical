@@ -104,27 +104,9 @@ class CanonicalNetlist:
         the plain diagnostic default. A changed attached snapshot is rejected.
         """
 
-        if not isinstance(self.extensions, CanonicalExtensions):
-            raise ValueError("expected a CanonicalExtensions envelope")
-        if include_extensions and self.extensions:
-            from .extensions import render_extended
-            return render_extended(self, include_diagnostics=include_diagnostics)
-        sections = []
-        if self.top.devices or self.top.name != 'TOP' or self.top.pins or self.top.parameter_defaults or self.top.parameter_assignments:
-            sections.append(
-                f"TOP_LEVEL {_cell(self.top.name)}\n" +
-                ("pin\n" + "\n".join(map(_cell, self.top.pins)) + "\n" if self.top.pins else "") +
-                "\n" + _render_defaults(self.top) + _render_assignments(self.top) + _render_circuit_tables(self.top)
-            )
-        for circuit in self.subcircuits:
-            sections.append(_render_subcircuit(circuit))
-        if include_diagnostics and self.diagnostics:
-            sections.append("\n".join([
-                'DIAGNOSTICS', 'source | line | message',
-                *(' | '.join((_cell(str(d.source)) if d.source is not None else '',
-                              str(d.line), _cell(d.message))) for d in self.diagnostics),
-            ]))
-        return "\n\n".join(sections) + ("\n" if sections else "")
+        from .canonical_text import render
+        return render(self, include_diagnostics=include_diagnostics,
+                      include_extensions=include_extensions)
 
     def with_namespace(self, name: str, version: int) -> CanonicalNetlist:
         """Declare a project schema without loading its producer."""
@@ -970,11 +952,6 @@ def _parameter_value(parameters: Sequence[Parameter], name: str) -> str | None:
     )
 
 
-def _render_subcircuit(circuit: Circuit) -> str:
-    pins = "\n".join([f"SUBCKT {_cell(circuit.name)}", "pin", *map(_cell, circuit.pins)])
-    return pins + "\n\n" + _render_defaults(circuit) + _render_assignments(circuit) + _render_circuit_tables(circuit)
-
-
 def _render_defaults(circuit: Circuit) -> str:
     if circuit.parameter_defaults:
         return "\n".join([
@@ -1030,6 +1007,10 @@ def _render_circuit_tables(circuit: Circuit) -> str:
 
 
 def _cell(value: str) -> str:
+    """Internal host encoding, also readable for legacy envelope validation.
+
+    The current file writer checks representability before emitting host cells.
+    """
     escapes = {"\\": "\\\\", "|": "\\|", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
     value = ''.join(escapes.get(char, f"\\u{ord(char):04x}" if
                     ord(char) < 32 or 127 <= ord(char) <= 159 or
@@ -1291,7 +1272,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.output is None:
             sys.stdout.write(rendered)
         else:
-            args.output.write_text(rendered, encoding="utf-8")
+            args.output.write_text(rendered, encoding="utf-8", newline="\n")
     except (OSError, UnicodeError) as exc:
         parser.exit(2, f"error: {exc}\n")
     return 0

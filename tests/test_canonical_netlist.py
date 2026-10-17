@@ -34,42 +34,42 @@ def test_render_inverter_with_named_subcircuit_pins() -> None:
 
     assert netlist.diagnostics == ()
     assert netlist.render() == (
-        "TOP_LEVEL TOP\n"
+        "TOP_PORTS TOP\nport\n"
         "\n"
-        "NET_INCIDENT_TABLE TOP\n"
-        "net | incident pins\n"
+        "NETS TOP\n"
+        "net | incident_pins\n"
         "vdd | VDD1.p, X1.VDD\n"
         "0 | VDD1.n, VIN.n, X1.VSS, CL.n\n"
         "in | VIN.p, X1.A\n"
         "out | X1.Y, CL.p\n"
         "\n"
-        "DEVICE_TABLE TOP\n"
-        "name | type | connections | parameters\n"
+        "DEVICES TOP\n"
+        "device | type | connections | parameters\n"
         "VDD1 | vsource | p=vdd, n=0 | dc=1.8\n"
         "VIN | vsource | p=in, n=0 | waveform=PULSE(0 1.8 0 1n 1n 5n 10n)\n"
         "X1 | INV | A=in, Y=out, VDD=vdd, VSS=0 | \n"
         "CL | capacitor | p=out, n=0 | value=10f\n"
         "\n"
-        "SUBCKT INV\n"
-        "pin\n"
+        "SUBCKT_PORTS INV\n"
+        "port\n"
         "A\n"
         "Y\n"
         "VDD\n"
         "VSS\n"
         "\n"
         "PARAMETER_DEFAULTS INV\n"
-        "name | value\n"
+        "parameter | value\n"
         "WP | 2u\n"
         "\n"
-        "NET_INCIDENT_TABLE INV\n"
-        "net | incident pins\n"
+        "NETS INV\n"
+        "net | incident_pins\n"
         "A | M1.g, M2.g\n"
         "Y | M1.d, M2.d\n"
         "VDD | M1.s, M1.b\n"
         "VSS | M2.s, M2.b\n"
         "\n"
-        "DEVICE_TABLE INV\n"
-        "name | type | connections | parameters\n"
+        "DEVICES INV\n"
+        "device | type | connections | parameters\n"
         "M1 | pmos | d=Y, g=A, s=VDD, b=VDD | model=PCH, W=2u, L=180n\n"
         "M2 | nmos | d=Y, g=A, s=VSS, b=VSS | model=NCH, W=1u, L=180n\n"
     )
@@ -82,10 +82,10 @@ def test_subcircuit_only_library_has_no_top_level_marker_or_tables() -> None:
 
     rendered = netlist.render()
 
-    assert not rendered.startswith("TOP_LEVEL")
-    assert "NET_INCIDENT_TABLE TOP" not in rendered
-    assert "DEVICE_TABLE TOP" not in rendered
-    assert rendered.startswith("SUBCKT INV\npin\nA\nY\n")
+    assert not rendered.startswith("TOP_PORTS")
+    assert "NETS TOP" not in rendered
+    assert "DEVICES TOP" not in rendered
+    assert rendered.startswith("SUBCKT_PORTS INV\nport\nA\nY\n")
 
 
 def test_bus_names_keep_colon_for_ranges_only() -> None:
@@ -167,7 +167,7 @@ def test_unconnected_subcircuit_pin_still_has_a_net_row() -> None:
         ".ENDS EMPTY\n"
     )
 
-    assert "A | \nY | \n\nDEVICE_TABLE EMPTY" in netlist.render()
+    assert "A | \nY | \n\nDEVICES EMPTY" in netlist.render()
 
 
 def test_known_subcircuit_pin_count_mismatch_is_an_error() -> None:
@@ -357,7 +357,7 @@ def test_cli_writes_output_and_strict_mode_rejects_diagnostics(
 
     assert result == 0
     assert output_path.read_text(encoding="utf-8").startswith(
-        "TOP_LEVEL CHIP\n\nNET_INCIDENT_TABLE CHIP\n"
+        "TOP_PORTS CHIP\nport\n\nNETS CHIP\n"
     )
     assert capsys.readouterr().err == ""
 

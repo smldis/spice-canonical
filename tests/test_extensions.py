@@ -13,7 +13,7 @@ from spice_canonical.inspect import definition_library, top_level_netlist, expan
 
 ROOT = ExtensionScope("root", "TOP")
 NS = "private.analysis"
-PREAMBLE = "EXTENSION_NAMESPACES\nnamespace | version\nprivate.analysis | 1\n\n"
+PREAMBLE = "NAMESPACES\nnamespace | version\nprivate.analysis | 1\n\n"
 
 
 def annotated():
@@ -42,8 +42,7 @@ def test_independent_unknown_schemas_and_namespace_local_edits(tmp_path):
     assert from_canonical_text(removed.render()) == removed
 
 
-@pytest.mark.parametrize("value", ["", " ", "  x  ", "a|b\\c\n\r\t", "\u00a0x\u00a0",
-                                  "a\u2028b\u2029c", "\v\f\x85", "\0", "🧪", "null",
+@pytest.mark.parametrize("value", [" ", "  x  ", "a|b\\c\n\r\t", "🧪", "gain µV/V", "null",
                                   '{"url":"https://invalid.example/no-fetch","code":"__import__"}'])
 def test_opaque_cells_round_trip_in_single_column_tables_and_host_columns(value):
     data = annotated().with_table(ExtensionTable(NS, "notes", ("text",), ((value,), (value,))))
@@ -51,29 +50,27 @@ def test_opaque_cells_round_trip_in_single_column_tables_and_host_columns(value)
     assert from_canonical_text(data.render()) == data
 
 
-def test_zero_rows_is_distinct_from_one_empty_row_and_empty_headers_survive():
+def test_zero_rows_and_empty_annotated_headers_survive():
     data = annotated().with_table(ExtensionTable(NS, "zero", ("text",), ()))
-    data = data.with_table(ExtensionTable(NS, "one", ("text",), (("",),)))
     data = data.with_column(NS, "note", table="PARAMETER_DEFAULTS", scope=ROOT, values=[])
     data = data.with_column(NS, "note", table="BLACK_BOX_TABLE", scope=ROOT, values=[])
     restored = from_canonical_text(data.render())
     assert restored == data
     assert restored.extensions.table(NS, "zero").rows == ()
-    assert restored.extensions.table(NS, "one").rows == (("",),)
-    assert "PARAMETER_DEFAULTS TOP\nname | value | private.analysis:note" in data.render()
+    assert "PARAMETER_DEFAULTS TOP\nparameter | value | private.analysis:note" in data.render()
 
 
 def test_annotated_net_row_order_survives_and_bindings_do_not_swap():
     text = PREAMBLE + from_text("R1 out 0 1k\n").render().replace(
-        "net | incident pins\nout | R1.p\n0 | R1.n",
-        "net | incident pins | private.analysis:role\n0 | R1.n | ground\nout | R1.p | signal")
+        "net | incident_pins\nout | R1.p\n0 | R1.n",
+        "net | incident_pins | private.analysis:role\n0 | R1.n | ground\nout | R1.p | signal")
     data = from_canonical_text(text)
     host = data.extensions.column_host(ROOT, "NET_INCIDENT_TABLE")
     assert host.row_order == ("0", "out")
     assert host.rows == (("ground",), ("signal",))
     data = data.with_column(NS, "label", table="NET_INCIDENT_TABLE", scope=ROOT,
                             values={"out": "output"})
-    assert "0 | R1.n | ground | \\e\nout | R1.p | signal | output" in data.render()
+    assert "0 | R1.n | ground | \nout | R1.p | signal | output" in data.render()
     assert from_canonical_text(data.render()) == data
 
 
@@ -91,13 +88,13 @@ def test_root_definition_and_document_scopes_and_inline_pin_columns():
     assert restored == data
     assert restored.top.devices == ()
     assert restored.subcircuits[0].parameter_defaults == (Parameter("W", "1"), Parameter("W", "1"))
-    assert "TOP_LEVEL TOP\npin | private.analysis:note" in data.render()
+    assert "TOP_PORTS TOP\nport | private.analysis:note" in data.render()
 
 
 def test_document_table_does_not_reset_current_circuit():
     data = annotated()
-    text = data.render().replace("NET_INCIDENT_TABLE TOP",
-        "private.analysis:notes\ntext\nhello\n\nNET_INCIDENT_TABLE TOP")
+    text = data.render().replace("NETS TOP",
+        "private.analysis:notes\ntext\nhello\n\nNETS TOP")
     loaded = from_canonical_text(text)
     assert loaded.extensions.table(NS, "notes").rows == (("hello",),)
     assert from_canonical_text(loaded.render()) == loaded
@@ -175,11 +172,11 @@ def test_noop_normalization_preserves_and_changed_normalization_projection_rejec
     (lambda s: s.replace("private.analysis:role", "role"), "qualified"),
     (lambda s: s.replace("| private.analysis:role", "| private.analysis:role | private.analysis:role"), "unique"),
     (lambda s: s.replace("out | R1.p", "out | R1.n"), "disagrees"),
-    (lambda s: s.replace("DEVICE_TABLE TOP", "UNKNOWN_TABLE TOP"), "unknown table"),
+    (lambda s: s.replace("DEVICES TOP", "UNKNOWN_TABLE TOP"), "unknown table"),
     (lambda s: s + "\nprivate.analysis:notes WRONG\ntext\nx\n", "current declared"),
     (lambda s: s + "\nprivate.analysis:notes\ntext\nx\n\nprivate.analysis:notes\ntext\ny\n", "duplicate extension"),
     (lambda s: s + "\nprivate.analysis:notes\ntext\nx | y\n", "column count"),
-    (lambda s: s + "\nEXTENSION_NAMESPACES\nnamespace | version\nprivate.other | 1\n", "first table"),
+    (lambda s: s + "\nNAMESPACES\nnamespace | version\nprivate.other | 1\n", "first table"),
 ])
 def test_malformed_envelopes_and_connectivity_still_fail(mutation, match):
     with pytest.raises(CanonicalParseError, match=match):

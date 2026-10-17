@@ -47,7 +47,7 @@ def test_include_scope_normalization_projections_and_file_roundtrip(tmp_path):
     assert data.top.devices == ()
     assert data.top.parameter_assignments == (Parameter('W', '2u'),)
     assert data.subcircuits[0].parameter_assignments == (Parameter('L', '{W / 4}'),)
-    assert 'TOP_LEVEL TOP' in data.render()  # A parameter-only root must be saved.
+    assert 'TOP_PORTS TOP' in data.render()  # A parameter-only root must be saved.
     normalized = normalize_device_types(data, {'resistor': 'r'})
     assert normalized.subcircuits[0].parameter_assignments == data.subcircuits[0].parameter_assignments
     assert normalized.top.parameter_assignments == data.top.parameter_assignments
@@ -114,7 +114,7 @@ def test_parameter_free_snapshot_guards_and_constructor_remain_compatible():
     assert core_digest(replace(data, top=replace(data.top, parameter_assignments=(Parameter('W', '1u'),)))) != core_digest(data)
 
 
-@pytest.mark.parametrize('row', [r'\e | 2u', r'W | \e'])
+@pytest.mark.parametrize('row', [' | 2u', 'W | '])
 def test_saved_assignment_table_rejects_missing_name_or_value(row):
     text = from_text('.param W=2u\n').render().replace('W | 2u', row)
     with pytest.raises(CanonicalParseError, match='nonempty names and values'):
@@ -124,4 +124,4 @@ def test_saved_assignment_table_rejects_missing_name_or_value(row):
 def test_separate_declarations_render_one_root_parameter_table():
     data = from_text('.param W=2u\nR1 a 0 {W}\n.param L=1u\n.param M=2\n')
     assert data.render().count('PARAMETER_ASSIGNMENTS TOP\n') == 1
-    assert 'name | value\nW | 2u\nL | 1u\nM | 2' in data.render()
+    assert 'parameter | value\nW | 2u\nL | 1u\nM | 2' in data.render()

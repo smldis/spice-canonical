@@ -33,7 +33,7 @@ def test_defaults_preserve_names_expressions_order_and_scope(spice_format, marke
     assert netlist.top.parameter_defaults == ()
     assert netlist.top.devices[0].parameters == (Parameter("WP", "3u"),)
     assert netlist.top.devices[1].parameters == ()
-    assert "PARAMETER_DEFAULTS INV\nname | value\nWP | 2u\nwN | {WP / 2}" in netlist.render()
+    assert "PARAMETER_DEFAULTS INV\nparameter | value\nWP | 2u\nwN | {WP / 2}" in netlist.render()
     assert from_text(deck.replace(f"WP{equals}2u", f"WP{equals}4u"), spice_format=spice_format).render() != netlist.render()
 
 
@@ -55,9 +55,9 @@ def test_normalization_and_includes_preserve_defaults(tmp_path):
 def test_default_free_render_and_old_constructor():
     assert Circuit("EMPTY", (), ()).parameter_defaults == ()
     assert from_text(".SUBCKT EMPTY A\n.ENDS\n").render() == (
-        "SUBCKT EMPTY\npin\nA\n\nNET_INCIDENT_TABLE EMPTY\n"
-        "net | incident pins\nA | \n\nDEVICE_TABLE EMPTY\n"
-        "name | type | connections | parameters\n"
+        "SUBCKT_PORTS EMPTY\nport\nA\n\nNETS EMPTY\n"
+        "net | incident_pins\nA | \n\nDEVICES EMPTY\n"
+        "device | type | connections | parameters\n"
     )
 
 
