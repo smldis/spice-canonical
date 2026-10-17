@@ -5,12 +5,10 @@ The existing renderer, parser, agent instructions and saved files are unchanged.
 
 ## Proposed naming
 
-Separate a circuit-scope declaration from its ordered external-port table:
+Use one explicitly named table to declare a definition and its ordered ports:
 
 ```text
-SUBCKT amplifier
-
-PORT_TABLE amplifier
+SUBCKT_PORT_TABLE amplifier
 port
 IN
 OUT
@@ -18,8 +16,8 @@ VDD
 VSS
 ```
 
-`SUBCKT amplifier` declares a reusable definition. `PORT_TABLE amplifier` names
-the table; `port` is its column header. Only its data rows declare ports, in
+`SUBCKT_PORT_TABLE amplifier` declares the reusable definition and names its
+interface table; `port` is its column header. Its data rows declare ports, in
 positional call order. Device terminals such as `d`, `g`, `s`, `p` and `n` remain
 pins in device connections. Naming distinguishes a circuit boundary port from
 an individual device pin.
@@ -35,12 +33,11 @@ VDD
 VSS
 ```
 
-The shorter alternative is `SUBCKT_PORT_TABLE amplifier` followed by the header
-and rows. That changes fewer lines but keeps scope declaration and table
-declaration combined. **Recommendation: use separate `SUBCKT` and `PORT_TABLE`
-blocks**, consistent with the explicit names of the other tables and usable for
-both root and definition interfaces. The header name alone cannot prevent a
-reader mistake; the grammar and example must identify headers as syntax.
+There is no separate `SUBCKT` block. The initial draft split scope declaration
+from port data; owner review rejected that unnecessary empty declaration.
+The interface table already carries the definition name, so it establishes
+the scope for the following circuit tables. The header name alone cannot
+prevent a reader mistake; the grammar and example must identify headers as syntax.
 
 ## Simple grammar
 
@@ -53,8 +50,9 @@ current parser accepts it. Read literal strings in quotes; `[]` means optional,
 file              = [ block, { gap, block } ], [ LF ];
 gap               = LF, LF, { LF };
 
-block             = scope-declaration | table;
-scope-declaration = ("TOP_LEVEL" | "SUBCKT"), " ", name;
+block             = root | table;
+root              = "TOP_LEVEL", " ", name,
+                    [ LF, header, { LF, row } ];
 
 table             = table-marker, LF, header, { LF, row };
 table-marker      = core-table, " ", name
@@ -62,7 +60,7 @@ table-marker      = core-table, " ", name
                   | "DIAGNOSTICS"
                   | qualified-name, [ " ", name ];
 
-core-table        = "PORT_TABLE"
+core-table        = "SUBCKT_PORT_TABLE"
                   | "PARAMETER_DEFAULTS"
                   | "PARAMETER_ASSIGNMENTS"
                   | "NET_INCIDENT_TABLE"
@@ -111,7 +109,8 @@ present even when the table has no rows.
 
 | Table marker | Required header | Scope |
 | --- | --- | --- |
-| `PORT_TABLE name` | `port` | Current root or definition |
+| `SUBCKT_PORT_TABLE name` | `port` | Declares a definition and its ordered interface |
+| `TOP_LEVEL name` | Optional `port` header and rows | Declares the root; normally has no external-port table |
 | `PARAMETER_DEFAULTS name` | `name \| value` | Current root or definition |
 | `PARAMETER_ASSIGNMENTS name` | `name \| value` | Current root or definition |
 | `NET_INCIDENT_TABLE name` | `net \| incident pins` | Current root or definition |
@@ -130,15 +129,19 @@ opaque data. Unknown unqualified markers are errors.
 
 The grammar identifies records. These short constraints establish their meaning:
 
-1. `TOP_LEVEL` declares the root, at most once. `SUBCKT` declares a definition;
-   definitions do not instantiate hardware. Root and definition name spaces
+1. `TOP_LEVEL` declares the root, at most once. `SUBCKT_PORT_TABLE` declares a
+   definition and its interface in one block; definitions do not instantiate
+   hardware. Root and definition name spaces
    remain distinct, even when both names are `TOP`. Definition names are unique
    case-insensitively.
-2. Each circuit table names the current root/definition. The name must match
-   that declaration. A document-scoped table does not change the current circuit.
-3. Every definition has exactly one `PORT_TABLE`, including an empty table for
-   a zero-port definition. Root ports are normally absent in extracted SPICE;
-   an explicit root interface, including extension columns, uses the same table.
+2. `TOP_LEVEL` and `SUBCKT_PORT_TABLE` establish the current circuit. Every
+   subsequent circuit table names that same root/definition until the next scope
+   starts. A document-scoped table does not change the current circuit.
+3. A zero-port definition has a `SUBCKT_PORT_TABLE` header with no data rows;
+   it still declares a real definition. Root ports are normally absent in
+   extracted SPICE, so `TOP_LEVEL name` remains a marker without a header.
+   If an explicit root interface is supplied, its `port` header, optional
+   extension columns and ordered rows follow within that same root block.
 4. Each declared circuit has exactly one `NET_INCIDENT_TABLE` and one
    `DEVICE_TABLE`. Other core tables are optional and cannot be duplicated in
    one scope. The writer places ports first, then defaults, assignments, nets,
@@ -165,9 +168,7 @@ The grammar identifies records. These short constraints establish their meaning:
 This file declares a reusable three-port divider; it contains no root instance:
 
 ```text
-SUBCKT divider
-
-PORT_TABLE divider
+SUBCKT_PORT_TABLE divider
 port
 IN
 OUT
@@ -191,11 +192,12 @@ this example alone asserts no supply, load, operating state or simulation result
 
 ## Compatibility and implementation after review
 
-- New writers would emit explicit `PORT_TABLE` blocks and the `port` header.
+- New writers would emit `SUBCKT_PORT_TABLE` blocks and the `port` header.
   New readers would also accept the existing combined `SUBCKT`/`pin` form and
-  legacy inline root pin tables. Reject a duplicate inline-plus-explicit
-  interface rather than guessing which wins. Old readers will not accept the
-  new syntax; update consumers before exchanging newly rendered files.
+  legacy inline root pin tables. Reject duplicate definitions instead of
+  accepting both old and new spellings for the same definition. Old readers
+  will not accept the new syntax; update consumers before exchanging newly
+  rendered files.
 - Preserve existing table/escape compatibility and namespaced annotations.
   Changing the public text marker need not rename the Python `Circuit.pins`
   field or the existing `PINS` extension-host API. Audit that boundary during
@@ -209,7 +211,7 @@ this example alone asserts no supply, load, operating state or simulation result
   them into this format change. The proposal can be reviewed independently;
   implementation prerequisites require their own explicit review or PR stack.
 
-**Review requested before implementation:** the explicit `PORT_TABLE` name,
-separating it from `SUBCKT`, the `port` column header, and whether this grammar
-plus the short scope rules is clear enough to give an agent. No syntax changes
-are adopted merely by opening the proposal PR.
+**Review requested before implementation:** the combined `SUBCKT_PORT_TABLE`
+name, the `port` column header, and whether this grammar plus the short scope
+rules is clear enough to give an agent. The rejected separate declaration has
+been removed; no runtime syntax changes are adopted merely by opening this PR.
