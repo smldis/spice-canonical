@@ -30,9 +30,11 @@ It downloads only checksum-pinned upstream examples. Normal tests remain
 offline.
 
 Saved canonical tables can be read back with `from_canonical_file("canonical.txt")`
-from `spice_canonical.canonical_netlist`. External cells retain explicit black-box
+from `spice_canonical.canonical_netlist`. Files use UTF-8 with LF line endings;
+the [formal grammar](docs/format.md) defines the current table names, headers
+and escaping. Historical files remain readable, and writers emit the current form. External cells retain explicit black-box
 interfaces: `--external-subcircuits pins.json` supplies ordered formal names;
-otherwise terminals are positional `@1`, `@2`, etc. `BLACK_BOX_TABLE` rows
+otherwise terminals are positional `@1`, `@2`, etc. `BLACK_BOXES` rows
 preserve boundaries through saved files. Diagnostic rows are omitted by
 default; use `render(include_diagnostics=True)` or CLI
 `--include-diagnostics` to retain them in the artifact. CLI warnings remain on

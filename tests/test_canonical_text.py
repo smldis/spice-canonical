@@ -28,7 +28,7 @@ def test_extract_save_read_preserves_named_and_positional_boundaries(tmp_path, c
     source.unlink()
     assert from_canonical_file(artifact) == data
     assert len(data.diagnostics) == 2  # missing include and unnamed resistor; .LIB is a boundary
-    assert 'BLACK_BOX_TABLE AMP' in artifact.read_text()
+    assert 'BLACK_BOXES AMP' in artifact.read_text()
 
 
 def test_cli_emits_reusable_custom_tables(tmp_path, capsys):
@@ -66,9 +66,9 @@ def test_empty_library_and_ordinary_legacy_tables(source):
 @pytest.mark.parametrize('mutation, match', [
     (lambda s: s.replace('a | R1.p', 'a | R1.n'), 'disagrees'),
     (lambda s: s.replace('resistor |', 'resistor | extra |'), 'column count'),
-    (lambda s: s.replace('DEVICE_TABLE TOP', 'DEVICE_TABLE WRONG'), 'current declared'),
-    (lambda s: s.replace('NET_INCIDENT_TABLE', 'UNKNOWN_TABLE'), 'unknown table'),
-    (lambda s: s + '\nDEVICE_TABLE TOP\nname | type | connections | parameters\n', 'duplicate'),
+    (lambda s: s.replace('DEVICES TOP', 'DEVICES WRONG'), 'current declared'),
+    (lambda s: s.replace('NETS', 'UNKNOWN_TABLE'), 'unknown table'),
+    (lambda s: s + '\nDEVICES TOP\ndevice | type | connections | parameters\n', 'duplicate'),
 ])
 def test_invalid_tables_fail_instead_of_silently_losing_evidence(mutation, match):
     with pytest.raises(CanonicalParseError, match=match):
@@ -85,7 +85,10 @@ def test_bad_black_box_basis_and_duplicate_roles_fail():
 
 def test_older_grouped_parameter_expressions_remain_readable():
     data = from_text('R1 a 0 {max(A, B)}\n')
-    older = data.render().replace('\\,', ',')
+    older = ('TOP_LEVEL TOP\n\nNET_INCIDENT_TABLE TOP\nnet | incident pins\n'
+             'a | R1.p\n0 | R1.n\n\nDEVICE_TABLE TOP\n'
+             'name | type | connections | parameters\n'
+             'R1 | resistor | p=a, n=0 | value={max(A, B)}\n')
     assert from_canonical_text(older) == data
 
 

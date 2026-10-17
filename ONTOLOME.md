@@ -128,8 +128,11 @@ ownership. The original simulator deck remains authoritative.
 
 The preservation commitment is decoded payload, ordered headers/rows and correct
 attachment, including empty annotated hosts and unused declarations. Required
-host layout is metadata, not a second connectivity authority. The codec now
-distinguishes an empty cell/row and preserves Unicode whitespace and separators.
+host layout is metadata, not a second connectivity authority. The current UTF-8/LF codec leaves empty cells blank and omits a special empty-row
+spelling. Empty one-column rows and unsupported controls/whitespace are explicit
+export errors; printable Unicode and named newline/carriage-return/tab/space
+escapes remain supported. Legacy reading preserves old empty/Unicode escapes in
+memory, but exporting unrepresentable data must fail rather than delete it.
 Extended export retains diagnostics; plain export retains its earlier default.
 Core-only export and removal are explicit. An envelope is bound to the exact
 ordered core snapshot: core-changing normalization fails and projection requires
@@ -185,3 +188,18 @@ An authored `source_type` collision can still lose its ambiguous call status
 when projection omits the candidate definitions; the current tables have no
 explicit ambiguity marker. This is an observed limit, not a claim that the
 call has a known missing target.
+
+## Reviewed canonical file grammar
+
+The owner adopted the extensive EBNF and requested implementation on 2026-10-17.
+The maintained specification is `docs/format.md`. Each record is a table with a
+mandatory header: `TOP_PORTS` and `SUBCKT_PORTS` combine identity and ordered
+interface, while `NETS`, `DEVICES`, `BLACK_BOXES` and `NAMESPACES` replace the
+historical file labels. Core headers use explicit subjects and snake_case.
+Python fields and annotation-host keys remain stable. Legacy labels, headers and
+lexical encodings remain readable; writers emit the new normal form, which older
+readers cannot consume. Shared-only historical records remain legacy-readable
+because they carry no distinct format marker. This is a serialization change,
+not an electrical interpretation or evidence of improved agent performance.
+Namespace and scope preservation, reciprocal incidence and explicit export
+limits are exercised together. Prototype maturity is unchanged.

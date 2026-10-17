@@ -17,38 +17,39 @@ An inverter instantiated at the top of a deck comes back as two reciprocal
 tables per circuit, plus a pin table for each subcircuit:
 
 ```text
-TOP_LEVEL TOP
+TOP_PORTS TOP
+port
 
-NET_INCIDENT_TABLE TOP
-net | incident pins
+NETS TOP
+net | incident_pins
 vdd | VDD1.p, X1.VDD
 0 | VDD1.n, VIN.n, X1.VSS, CL.n
 in | VIN.p, X1.A
 out | X1.Y, CL.p
 
-DEVICE_TABLE TOP
-name | type | connections | parameters
+DEVICES TOP
+device | type | connections | parameters
 VDD1 | vsource | p=vdd, n=0 | dc=1.8
 VIN | vsource | p=in, n=0 | waveform=PULSE(0 1.8 0 1n 1n 5n 10n)
 X1 | INV | A=in, Y=out, VDD=vdd, VSS=0 |
 CL | capacitor | p=out, n=0 | value=10f
 
-SUBCKT INV
-pin
+SUBCKT_PORTS INV
+port
 A
 Y
 VDD
 VSS
 
-NET_INCIDENT_TABLE INV
-net | incident pins
+NETS INV
+net | incident_pins
 A | M1.g, M2.g
 Y | M1.d, M2.d
 VDD | M1.s, M1.b
 VSS | M2.s, M2.b
 
-DEVICE_TABLE INV
-name | type | connections | parameters
+DEVICES INV
+device | type | connections | parameters
 M1 | pmos | d=Y, g=A, s=VDD, b=VDD | model=PCH, W=2u, L=180n
 M2 | nmos | d=Y, g=A, s=VSS, b=VSS | model=NCH, W=1u, L=180n
 ```
@@ -69,6 +70,7 @@ Two ideas carry the rest:
 
 | If you want to | Read |
 | --- | --- |
+| read the formal grammar, headers and escaping rules | [Canonical file format](format.md) |
 | consume the output, or write a reverse converter | [The canonical representation](representation.md) |
 | query structure, hierarchy, source evidence, or connectivity from Python | [Python inspection](inspection.md) |
 | run the extractor from Python or the command line | [Extracting a canonical netlist](extraction.md) |
@@ -97,6 +99,7 @@ excludes on purpose.
 :maxdepth: 2
 
 representation
+format
 extraction
 inspection
 agent-skill

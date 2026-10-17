@@ -49,7 +49,7 @@ def test_top_level_export_marks_removed_definitions_but_preserves_existing_boxes
     assert resolve_call(saved, known).status == 'opaque'
     assert resolve_call(saved, external).status == 'opaque'
     assert data.top.devices[0].black_box is None
-    assert 'BLACK_BOX_TABLE TOP' in saved.render()
+    assert 'BLACK_BOXES TOP' in saved.render()
     assert 'DIAGNOSTICS' not in projected.render()
 
 

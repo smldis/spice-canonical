@@ -14,7 +14,8 @@ Subcircuit interfaces are represented separately so an instance can use formal
 pin names instead of positional pin numbers.
 
 This page is the format itself — what a consumer, or a reverse converter, reads.
-For the parser that produces it, see [extracting a canonical netlist](extraction.md).
+For the formal EBNF, table schemas and UTF-8/escaping contract, see
+[canonical file format](format.md). For the parser that produces it, see [extracting a canonical netlist](extraction.md).
 
 ## Tables
 
@@ -23,8 +24,8 @@ order from the original `.SUBCKT` statement, but numeric pin identifiers are not
 introduced.
 
 ```text
-SUBCKT INV
-pin
+SUBCKT_PORTS INV
+port
 A
 Y
 VDD
@@ -36,7 +37,7 @@ after its interface and before its net and device tables:
 
 ```text
 PARAMETER_DEFAULTS INV
-name | value
+parameter | value
 WP | 2u
 WN | {WP / 2}
 ```
@@ -47,7 +48,7 @@ spelling (including quotes or braces). Repeated names remain separate rows;
 the extractor does not choose simulator precedence. Assignment spacing is not
 retained, and continuation lines are joined by the existing logical-line parser.
 Cells use the same escaping as the other tables. No table is emitted when there
-are no defaults, so default-free output is unchanged.
+are no defaults or default-host annotations.
 
 Defaults belong to the definition. An instance's device parameters contain only
 its explicit overrides; the extractor neither copies defaults into instances nor
@@ -58,8 +59,8 @@ read these tables back into canonical objects without evaluating expressions.
 Each circuit, including `TOP`, has a net-incident table with one row per net.
 
 ```text
-NET_INCIDENT_TABLE INV
-net | incident pins
+NETS INV
+net | incident_pins
 A | M1.g, M2.g
 Y | M1.d, M2.d
 VDD | M1.s, M1.b
@@ -68,13 +69,13 @@ VSS | M2.s, M2.b
 
 An incident pin uses `instance.pin`. Primitive devices use semantic terminal
 names such as `d`, `g`, `s`, and `b`. Subcircuit instances use the formal pin
-names from the corresponding `SUBCKT` table.
+names from the corresponding `SUBCKT_PORTS` table.
 
 Each circuit also has a device table.
 
 ```text
-DEVICE_TABLE INV
-name | type | connections | parameters
+DEVICES INV
+device | type | connections | parameters
 M1 | pmos | d=Y, g=A, s=VDD, b=VDD | model=PCH, W=2u, L=180n
 M2 | nmos | d=Y, g=A, s=VSS, b=VSS | model=NCH, W=1u, L=180n
 ```
@@ -87,16 +88,16 @@ A subcircuit instance uses its subcircuit name as its type and maps formal pins
 to nets by name.
 
 ```text
-DEVICE_TABLE TOP
-name | type | connections | parameters
+DEVICES TOP
+device | type | connections | parameters
 X1 | INV | A=in, Y=out, VDD=vdd, VSS=0 |
 ```
 
 The corresponding net rows are:
 
 ```text
-NET_INCIDENT_TABLE TOP
-net | incident pins
+NETS TOP
+net | incident_pins
 in | X1.A
 out | X1.Y
 vdd | X1.VDD
@@ -105,22 +106,18 @@ vdd | X1.VDD
 
 ## Top Level
 
-The root circuit starts with a reserved marker:
+The root uses the same interface-table syntax as definitions:
 
 ```text
-TOP_LEVEL TOP
+TOP_PORTS TOP
+port
 ```
 
-It is followed by the root `NET_INCIDENT_TABLE` and `DEVICE_TABLE`. There is no
-root pin table because a SPICE input deck has no declared external pin list.
-`TOP_LEVEL` lets a reverse converter locate the root directly without traversing
-subcircuit hierarchy or being told the root circuit's display name.
-For a library file containing only subcircuit definitions, the marker and both
-root tables are omitted; such a representation intentionally has no designated
-simulation root.
-
-The root circuit's display name follows the extractor's `top_name`, which
-defaults to `TOP`.
+It declares the root identity and ordered external ports. Ordinary SPICE roots
+have zero port rows; authored canonical roots can have explicit ports. This is
+followed by `NETS` and `DEVICES` tables. A definition-only library omits the
+root tables. The root display name follows `top_name`, defaulting to `TOP`.
+An empty default root is omitted unless it carries data or annotation layout.
 
 ## Connectivity Invariant
 
@@ -146,8 +143,8 @@ Bus indices and ranges use angle brackets and retain the spelling from the sourc
 netlist.
 
 ```text
-SUBCKT REGISTER
-pin
+SUBCKT_PORTS REGISTER
+port
 D<9:0>
 Q<9:0>
 CLK
@@ -184,10 +181,11 @@ All top-level `.PARAM` declarations are grouped into one root table, even if
 that root has no devices:
 
 ```text
-TOP_LEVEL TOP
+TOP_PORTS TOP
+port
 
 PARAMETER_ASSIGNMENTS TOP
-name | value
+parameter | value
 PAIR_W | 2u
 PAIR_L | {PAIR_W / 4}
 BIAS | 10u
@@ -228,16 +226,16 @@ use `\s`. Inside comma-separated lists, literal commas use `\,`; literal equals
 in assignment names use `\=`. Incident references escape literal dots in either
 the instance or pin name as `\.`. Reading restores the original strings.
 Earlier grouped/quoted parameter expressions with unescaped commas remain
-readable. Ambiguous old incident references containing literal dots must be
+readable in legacy files. Ambiguous old incident references containing literal dots must be
 escaped or re-extracted; the reader does not guess their boundaries.
 
-Other control characters and Unicode whitespace/separators use four-digit
-Unicode escapes such as `\u000b`, `\u00a0` and `\u2028`. The record separator is
-LF; only ASCII space/tab and a CR from CRLF formatting are trimmed. Extension
-strings contain Unicode scalar values, including ordinary non-ASCII text.
-An extension cell containing only `\e` means the empty string. This makes a
-one-column empty row distinct from a table with zero rows. A literal backslash
-before `e` is escaped normally. JSON, `null`, URLs and paths remain strings.
+Files use UTF-8 with LF records. Printable Unicode stays literal. Newline,
+carriage return, tab and significant spaces use their named escapes; other
+controls and unsupported whitespace/separators are rejected. Empty cells stay
+blank. A table with no entries retains its label and header; an empty one-column
+data row is not representable. Multi-column empty cells and rows remain valid.
+JSON, `null`, URLs and paths remain strings. See the complete
+[grammar and legacy-reading rules](format.md).
 
 ## External cells and saved diagnostics
 
@@ -248,8 +246,8 @@ terminal tokens without claiming formal names. Missing primitive model bodies
 do not create this marker: primitive syntax already defines their terminals.
 
 ```text
-BLACK_BOX_TABLE TOP
-name | cell | pin_basis
+BLACK_BOXES TOP
+device | cell | pin_basis
 XM | nmos_lvt | named
 XR | vendor_res | positional
 ```
@@ -277,7 +275,7 @@ The reader preserves defaults, scoped assignments, duplicate parameter entries, 
 pins, black-box markers and any included diagnostics. It requires blank lines
 between table blocks, rejects unknown unqualified/duplicate tables and invalid fields, and
 checks reciprocal net/device incidence. The top-level circuit and subcircuit definitions have
-separate name scopes: a `.SUBCKT TOP` may coexist with `TOP_LEVEL TOP`, and a
+separate name scopes: a `.SUBCKT TOP` may coexist with `TOP_PORTS TOP`, and a
 black-box cell called `TOP` does not imply an implementation in the top-level
 circuit. Device/net row ordering need not agree. Files rendered by
 older versions without metadata tables remain readable when unambiguous, but
@@ -290,20 +288,20 @@ structural fields or installing the producer. A single preamble precedes all
 circuits and declares every namespace used, including otherwise unused ones:
 
 ```text
-EXTENSION_NAMESPACES
+NAMESPACES
 namespace | version
 org.example.analysis | 1
 
-TOP_LEVEL TOP
-pin
+TOP_PORTS TOP
+port
 
-NET_INCIDENT_TABLE TOP
-net | incident pins
+NETS TOP
+net | incident_pins
 out | R1.p
 0 | R1.n
 
-DEVICE_TABLE TOP
-name | type | connections | parameters | org.example.analysis:role
+DEVICES TOP
+device | type | connections | parameters | org.example.analysis:role
 R1 | resistor | p=out, n=0 | value=1k | load_candidate
 
 org.example.analysis:findings TOP
@@ -376,8 +374,9 @@ collections are tuples; cells are strings.
 `ExtensionScope()` is document scope; root and definition scopes require a name,
 stored case-folded to match structural identity rules. Column host names are
 `PINS`, `PARAMETER_DEFAULTS`, `PARAMETER_ASSIGNMENTS`, `NET_INCIDENT_TABLE`, `DEVICE_TABLE`,
-`BLACK_BOX_TABLE` and `DIAGNOSTICS`. `PINS` identifies the inline interface table
-after the root/definition marker; it is not a standalone file marker.
+`BLACK_BOX_TABLE` and `DIAGNOSTICS`. These are stable Python host keys; file
+labels use the [current grammar](format.md). `PINS` identifies the combined
+root/definition interface table.
 Diagnostics require document scope; other column hosts require a circuit scope.
 
 Column value mappings use case-insensitive device/net/pin names for named hosts,
@@ -403,12 +402,12 @@ until explicitly removed because opaque tables may reference removed scopes.
 Read-only structural reports and expansion remain views; their results do not
 claim annotation-preserving export.
 
-Plain files retain existing render behavior. For an extended snapshot, default
+Plain files omit diagnostics by default. For an extended snapshot, default
 `render()` includes its diagnostics, even when only another table is annotated.
 `include_diagnostics=False` fails if it would remove diagnostics or an annotated
 diagnostic host. Explicit `render(include_extensions=False)` produces core-only
 text with the old diagnostic default; pass `include_diagnostics=True` separately
-if needed. Older readers reject extended files and can consume this projection.
+if needed. This projection uses the current file grammar; older readers require updating.
 
 Attachment and preservation do not establish truth or freshness. The in-memory
 guard captures the snapshot at loading/authoring; it cannot discover external

@@ -375,52 +375,5 @@ def remove_column(netlist: CanonicalNetlist, namespace: str, name: str, *,
 
 
 def render_extended(netlist: CanonicalNetlist, *, include_diagnostics: bool | None) -> str:
-    from .canonical_netlist import _cell
-    netlist.extensions.validate(netlist)
-    envelope = netlist.extensions
-    hosts = _core_hosts(netlist)
-    diagnostic_columns = envelope.column_host(ExtensionScope(), "DIAGNOSTICS")
-    if include_diagnostics is False and (netlist.diagnostics or diagnostic_columns is not None):
-        raise ValueError("cannot suppress diagnostics with attached extensions; use explicit core-only export")
-
-    def cell(value):
-        return _cell(value) or r"\e"
-
-    def emit_host(scope, table, marker):
-        host = hosts[scope, table]
-        extra = envelope.column_host(scope, table)
-        headers, rows = host.headers, host.rows
-        if extra is not None:
-            by_key = dict(zip(_row_keys(host), rows))
-            rows = tuple((*by_key[key], *(cell(value) for value in values))
-                         for key, values in zip(extra.row_order, extra.rows))
-            headers = (*headers, *extra.columns)
-        return "\n".join((marker, " | ".join(headers), *(" | ".join(row) for row in rows)))
-
-    def emit_tables(scope, argument=""):
-        return ["\n".join((f"{item.namespace}:{item.name}{argument}",
-                          " | ".join(item.columns),
-                          *(" | ".join(cell(value) for value in row) for row in item.rows)))
-                for item in envelope.tables if item.scope == scope]
-
-    sections = ["\n".join(("EXTENSION_NAMESPACES", "namespace | version",
-                           *(f"{item.name} | {item.version}" for item in envelope.namespaces)))]
-    sections.extend(emit_tables(ExtensionScope()))
-    circuits = ((ExtensionScope("root", netlist.top.name), netlist.top), *(
-                (ExtensionScope("definition", c.name), c) for c in netlist.subcircuits))
-    for scope, circuit in circuits:
-        targeted = any(item.scope == scope for item in (*envelope.columns, *envelope.tables))
-        if scope.kind == "root" and not (targeted or circuit.devices or circuit.pins or
-                                        circuit.parameter_defaults or circuit.parameter_assignments or circuit.name != "TOP"):
-            continue
-        name = _cell(circuit.name)
-        marker = "TOP_LEVEL" if scope.kind == "root" else "SUBCKT"
-        sections.append(emit_host(scope, "PINS", f"{marker} {name}"))
-        for table in ("PARAMETER_DEFAULTS", "PARAMETER_ASSIGNMENTS", "NET_INCIDENT_TABLE", "DEVICE_TABLE", "BLACK_BOX_TABLE"):
-            if (hosts[scope, table].rows or table in ("NET_INCIDENT_TABLE", "DEVICE_TABLE")
-                    or envelope.column_host(scope, table) is not None):
-                sections.append(emit_host(scope, table, f"{table} {name}"))
-        sections.extend(emit_tables(scope, f" {name}"))
-    if netlist.diagnostics or diagnostic_columns is not None:
-        sections.append(emit_host(ExtensionScope(), "DIAGNOSTICS", "DIAGNOSTICS"))
-    return "\n\n".join(sections) + "\n"
+    from .canonical_text import render
+    return render(netlist, include_diagnostics=include_diagnostics)

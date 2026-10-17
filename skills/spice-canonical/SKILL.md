@@ -18,7 +18,7 @@ print(data.render())
 
 For an isolated snippet, use `from_text("R1 in 0 1k\n", spice_format="eldo")`. Both functions accept `top_name` and `device_type_map`; only `from_file` accepts `stop_include` and `external_subcircuits`.
 
-`data.top` and `data.subcircuits` are `Circuit` values. Each circuit has `name`, ordered `pins`, `devices`, and ordered `parameter_defaults`. Devices have `name`, `type`, `connections`, `parameters`, and optional `black_box`; connections have `pin` and `net`. Parameters retain raw, unevaluated values. An instance's parameters are explicit overrides, not expanded defaults. Inspect `data.diagnostics` before treating extracted connectivity as complete. `CanonicalParseError` means structurally inconsistent input; diagnostics report nonfatal omissions or assumptions.
+`data.top` and `data.subcircuits` are `Circuit` values. Each circuit has `name`, ordered `pins`, `devices`, ordered `parameter_defaults`, and ordered scope-owned `parameter_assignments`. Devices have `name`, `type`, `connections`, `parameters`, and optional `black_box`; connections have `pin` and `net`. Parameters retain raw, unevaluated values. An instance's parameters are explicit overrides, not expanded defaults. Inspect `data.diagnostics` before treating extracted connectivity as complete. `CanonicalParseError` means structurally inconsistent input; diagnostics report nonfatal omissions or assumptions.
 
 **Inspect through Python.** Use direct dataclass fields for filtering devices, raw parameters, defaults, and black boxes. Reuse the public helpers for incidence and hierarchy:
 
@@ -72,6 +72,21 @@ The CLI equivalent is `--external-subcircuits interfaces.json`, with content suc
 **Normalize only with an explicit map.** `from_file(..., device_type_map={"library_cell": "nmos"})`, `normalize_device_types(data, mapping)`, or `--device-type-map types.json` maps source types case-insensitively. The JSON is a source-type-to-canonical-type object. Changed devices retain their old type as a `source_type` parameter and retain black-box identity. No map means no normalization.
 
 **Reuse the saved representation.** `data.render()` emits structural canonical tables without diagnostic rows; use `data.render(include_diagnostics=True)` to retain diagnostics in the artifact. `data.diagnostics` remains available either way. `from_canonical_file("canonical.txt")` and `from_canonical_text(text)` read saved tables without reopening source files or re-extracting. The reader validates table shape and reciprocal net/device incidence; use it when a downstream tool consumes an existing artifact. The tables are not SPICE syntax or a lossless simulator deck.
+
+**Read the file grammar.** Files use UTF-8 with LF line endings. Every block has
+a label, a required header and zero or more rows, with blank lines between blocks.
+`TOP_PORTS name` and `SUBCKT_PORTS name` combine circuit identity and ordered
+ports (header `port`). Core tables are `PARAMETER_DEFAULTS`,
+`PARAMETER_ASSIGNMENTS`, `NETS`, `DEVICES`, `BLACK_BOXES`, `NAMESPACES` and
+`DIAGNOSTICS`. Empty cells are blank; there is no empty-value or Unicode escape.
+Printable Unicode stays literal; named escapes preserve newline, carriage return,
+tab and significant ASCII spaces. Split unescaped delimiters before decoding.
+Namespaces declare versions before qualified tables/columns are used. Unknown
+declared producer schemas remain opaque. Read the complete EBNF and schema table
+in `docs/format.md` before authoring or interpreting unusual fields. Python
+annotation-host keys retain their historical names. Old file names/headers remain
+readable; new writers emit the current form. Unsupported characters and empty
+one-column rows fail export explicitly.
 
 **Save a top-level-only canonical file through Python.** Read `case_01` in the checkout's `examples/use_cases.py` for the complete example: `top_level_netlist(data)` from `spice_canonical.inspect` keeps the root structure, and `Path(path).write_text(top_only.render(), encoding="utf-8")` saves it. Instances and their connections/overrides remain; omitted definition bodies become named black boxes and existing external black boxes retain their interfaces. The projected object keeps input-wide diagnostics, but the saved table omits them by default. Root-scope PARAM/MODEL source evidence is separate. The same file is the package's use-case recipe catalog, including selected-definition export in `case_17`; adapt these recipes using public APIs, without making application code depend on their numbering.
 

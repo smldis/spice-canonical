@@ -1,7 +1,9 @@
 """Reader for canonical tables. Connectivity is checked, never reconstructed from SPICE."""
 from collections import Counter
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
+import re
 
 from .canonical_netlist import (
     BlackBox, CanonicalNetlist, CanonicalParseError, Circuit, Connection,
@@ -11,6 +13,47 @@ from .extensions import (
     CORE_HEADERS, CanonicalExtensions, ExtensionColumns, ExtensionNamespace,
     ExtensionScope, ExtensionTable, core_digest, qualified_name,
 )
+
+
+# File spelling is independent of the stable Python annotation-host keys.
+FILE_NAMES = {
+    'PARAMETER_DEFAULTS': 'PARAMETER_DEFAULTS',
+    'PARAMETER_ASSIGNMENTS': 'PARAMETER_ASSIGNMENTS',
+    'NET_INCIDENT_TABLE': 'NETS', 'DEVICE_TABLE': 'DEVICES',
+    'BLACK_BOX_TABLE': 'BLACK_BOXES', 'DIAGNOSTICS': 'DIAGNOSTICS',
+}
+FILE_HEADERS = {
+    'PINS': ('port',),
+    'PARAMETER_DEFAULTS': ('parameter', 'value'),
+    'PARAMETER_ASSIGNMENTS': ('parameter', 'value'),
+    'NET_INCIDENT_TABLE': ('net', 'incident_pins'),
+    'DEVICE_TABLE': ('device', 'type', 'connections', 'parameters'),
+    'BLACK_BOX_TABLE': ('device', 'cell', 'pin_basis'),
+    'DIAGNOSTICS': ('source', 'line', 'message'),
+}
+ALIASES = {value: key for key, value in FILE_NAMES.items()}
+ALIASES.update(TOP_PORTS='TOP_LEVEL', SUBCKT_PORTS='SUBCKT',
+               NAMESPACES='EXTENSION_NAMESPACES')
+NEW_MARKERS = {'TOP_PORTS', 'SUBCKT_PORTS', 'NETS', 'DEVICES', 'BLACK_BOXES', 'NAMESPACES'}
+
+
+def _check_character(char, context):
+    code = ord(char)
+    if (0xD800 <= code <= 0xDFFF or code < 32 or 127 <= code <= 159
+            or char != ' ' and char.isspace()):
+        raise CanonicalParseError(f'{context}: unsupported character U+{code:04X}')
+
+
+def _check_value(value, context):
+    for char in value:
+        if char not in '\n\r\t':
+            _check_character(char, context)
+
+
+def _encode(value, context):
+    from .canonical_netlist import _cell
+    _check_value(value, context)
+    return _cell(value)
 
 
 def _split(text, separator, *, grouped=False, maxsplit=None):
@@ -42,15 +85,15 @@ def _split(text, separator, *, grouped=False, maxsplit=None):
     return parts
 
 
-def _decode(text):
-    if text == r'\e':
+def _decode(text, *, legacy=True):
+    if legacy and text == r'\e':
         return ''
     result, i = [], 0
     while i < len(text):
         char = text[i]
         if char == '\\':
             i += 1
-            if i < len(text) and text[i] == 'u':
+            if legacy and i < len(text) and text[i] == 'u':
                 digits = text[i + 1:i + 5]
                 if len(digits) != 4 or any(c not in '0123456789abcdefABCDEF' for c in digits):
                     raise CanonicalParseError(f'invalid canonical Unicode escape in {text!r}')
@@ -60,9 +103,11 @@ def _decode(text):
                 result.append(chr(code))
                 i += 5
                 continue
-            if i == len(text) or text[i] not in '\\|nrts,=. ':
+            if i == len(text) or text[i] not in ('\\|nrts,=. ' if legacy else '\\|nrts,=.'):
                 raise CanonicalParseError(f'invalid canonical escape in {text!r}')
             char = {'n': '\n', 'r': '\r', 't': '\t', 's': ' '}.get(text[i], text[i])
+        elif not legacy:
+            _check_character(char, 'canonical cell')
         result.append(char)
         i += 1
     return ''.join(result)
@@ -74,15 +119,15 @@ def _unique(values, label):
         raise CanonicalParseError(f'duplicate {label}')
 
 
-def _assignments(text, cls):
+def _assignments(text, cls, *, decode=_decode, legacy=True):
     if not text:
         return ()
     result = []
-    for item in _split(text, ',', grouped=cls is Parameter):
+    for item in _split(text, ',', grouped=legacy and cls is Parameter):
         parts = _split(item, '=', maxsplit=1)
         if len(parts) < 2 or not parts[0]:
             raise CanonicalParseError(f'expected name=value, found {item!r}')
-        result.append(cls(_decode(parts[0]), _decode(parts[1])))
+        result.append(cls(decode(parts[0]), decode(parts[1])))
     return tuple(result)
 
 
@@ -96,6 +141,10 @@ def parse(text: str) -> CanonicalNetlist:
             block = []
     if block:
         blocks.append(block)
+    # Distinct current markers select strict current lexical rules. Shared-only
+    # artifacts (e.g. historical DIAGNOSTICS alone) remain legacy-readable.
+    current_format = any(block[0][1].partition(' ')[0] in NEW_MARKERS for block in blocks)
+    decode = partial(_decode, legacy=not current_format)
     circuits, order, top_data, diagnostics = {}, [], None, []
     diagnostic_table = False
     current = None
@@ -106,7 +155,7 @@ def parse(text: str) -> CanonicalNetlist:
     def read_rows(block, required=None):
         if len(block) < 2:
             raise CanonicalParseError('table requires a header')
-        header = tuple(_decode(x) for x in _split(block[1][1], '|'))
+        header = tuple(decode(x) for x in _split(block[1][1], '|'))
         if not header or any(not name for name in header) or len(header) != len(set(header)):
             raise CanonicalParseError('table headers must be nonempty and unique')
         if required is not None:
@@ -119,6 +168,10 @@ def parse(text: str) -> CanonicalNetlist:
         rows = []
         for number, row in block[2:]:
             cells = tuple(_split(row, '|'))
+            # Validate every encoded cell, including structured fields and
+            # unknown producer payloads, before their schema-specific decoding.
+            for cell in cells:
+                decode(cell)
             if len(cells) != len(header):
                 raise CanonicalParseError(f'canonical line {number}: incorrect column count')
             rows.append(cells)
@@ -127,16 +180,17 @@ def parse(text: str) -> CanonicalNetlist:
     def retain_columns(scope, kind, header, rows, width):
         if len(header) > width:
             positional = kind in ('PARAMETER_DEFAULTS', 'PARAMETER_ASSIGNMENTS', 'DIAGNOSTICS')
-            keys = tuple(range(len(rows))) if positional else tuple(_decode(row[0]).casefold() for row in rows)
+            keys = tuple(range(len(rows))) if positional else tuple(decode(row[0]).casefold() for row in rows)
             column_hosts.append(ExtensionColumns(
                 scope, kind, header[width:], keys,
-                tuple(tuple(_decode(value) for value in row[width:]) for row in rows)))
+                tuple(tuple(decode(value) for value in row[width:]) for row in rows)))
         return [list(row[:width]) for row in rows]
 
     for index, block in enumerate(blocks):
         number, marker = block[0]
         try:
-            kind, _, raw_name = marker.partition(' ')
+            spelling, _, raw_name = marker.partition(' ')
+            kind = ALIASES.get(spelling, spelling)
             if kind == 'EXTENSION_NAMESPACES':
                 if index != 0 or raw_name:
                     raise CanonicalParseError('namespace preamble must be the first table')
@@ -144,7 +198,7 @@ def parse(text: str) -> CanonicalNetlist:
                 if header != ('namespace', 'version') or not rows:
                     raise CanonicalParseError('namespace preamble requires namespace/version declarations')
                 for name, version in rows:
-                    name, version = _decode(name), _decode(version)
+                    name, version = decode(name), decode(version)
                     if not version.isascii() or not version.isdigit() or version.startswith('0'):
                         raise CanonicalParseError('namespace version must be a positive integer')
                     namespace = ExtensionNamespace(name, int(version))
@@ -154,7 +208,7 @@ def parse(text: str) -> CanonicalNetlist:
                     declared.add(name)
                 continue
             if kind in ('TOP_LEVEL', 'SUBCKT'):
-                name = _decode(raw_name.strip(' \t\r'))
+                name = decode(raw_name.strip(' \t\r'))
                 if not name:
                     raise CanonicalParseError('empty circuit name')
                 if kind == 'TOP_LEVEL':
@@ -167,10 +221,14 @@ def parse(text: str) -> CanonicalNetlist:
                         raise CanonicalParseError('SUBCKT requires a pin table')
                 scope = ExtensionScope('root' if kind == 'TOP_LEVEL' else 'definition', name)
                 pins = ()
+                if spelling in NEW_MARKERS and len(block) < 2:
+                    raise CanonicalParseError('table requires a header')
                 if len(block) > 1:
-                    header, rows = read_rows(block, ('pin',))
+                    header, rows = read_rows(block, FILE_HEADERS['PINS'] if spelling in NEW_MARKERS else ('pin',))
                     rows = retain_columns(scope, 'PINS', header, rows, 1)
-                    pins = tuple(_decode(row[0]) for row in rows)
+                    pins = tuple(decode(row[0]) for row in rows)
+                if any(not pin for pin in pins):
+                    raise CanonicalParseError('circuit ports must be nonempty')
                 _unique(pins, 'circuit pins')
                 current = {'name': name, 'pins': pins, 'tables': {}, 'scope': scope}
                 if kind == 'TOP_LEVEL':
@@ -185,22 +243,32 @@ def parse(text: str) -> CanonicalNetlist:
                     raise CanonicalParseError('undeclared extension namespace')
                 scope = ExtensionScope()
                 if raw_name:
-                    if current is None or _decode(raw_name.strip(' \t\r')).casefold() != current['name'].casefold():
+                    if current is None or decode(raw_name.strip(' \t\r')).casefold() != current['name'].casefold():
                         raise CanonicalParseError('custom table must belong to the current declared circuit')
                     scope = current['scope']
                 header, rows = read_rows(block)
                 custom_tables.append(ExtensionTable(namespace, local, header,
-                    tuple(tuple(_decode(value) for value in row) for row in rows), scope))
+                    tuple(tuple(decode(value) for value in row) for row in rows), scope))
                 continue
             if kind not in headers or (kind == 'DIAGNOSTICS' and raw_name):
                 raise CanonicalParseError(f'unknown table {marker!r}')
-            header, rows = read_rows(block, headers[kind])
+            # Shared parameter/diagnostic labels can carry legacy headers.
+            if len(block) < 2:
+                raise CanonicalParseError('table requires a header')
+            required = headers[kind]
+            if spelling in NEW_MARKERS:
+                required = FILE_HEADERS[kind]
+            elif current_format and spelling == FILE_NAMES[kind]:
+                observed = tuple(_split(block[1][1], '|'))[:len(required)]
+                if observed != required:
+                    required = FILE_HEADERS[kind]
+            header, rows = read_rows(block, required)
             if kind == 'DIAGNOSTICS':
                 if diagnostic_table:
                     raise CanonicalParseError('duplicate DIAGNOSTICS')
                 diagnostic_table = True
             else:
-                if current is None or _decode(raw_name.strip(' \t\r')).casefold() != current['name'].casefold():
+                if current is None or decode(raw_name.strip(' \t\r')).casefold() != current['name'].casefold():
                     raise CanonicalParseError('table must belong to the current declared circuit')
                 if kind in current['tables']:
                     raise CanonicalParseError(f'duplicate {kind}')
@@ -208,10 +276,10 @@ def parse(text: str) -> CanonicalNetlist:
             rows = retain_columns(scope, kind, header, rows, len(headers[kind]))
             if kind == 'DIAGNOSTICS':
                 for source, line, message in rows:
-                    if not line.isdigit():
+                    if not re.fullmatch(r'0|[1-9][0-9]*', line):
                         raise CanonicalParseError('diagnostic line must be a non-negative integer')
-                    decoded_source = _decode(source)
-                    diagnostics.append(Diagnostic(int(line), _decode(message), Path(decoded_source) if decoded_source else None))
+                    decoded_source = decode(source)
+                    diagnostics.append(Diagnostic(int(line), decode(message), Path(decoded_source) if decoded_source else None))
             else:
                 current['tables'][kind] = rows
         except ValueError as exc:
@@ -221,8 +289,8 @@ def parse(text: str) -> CanonicalNetlist:
         tables = data['tables']
         if 'DEVICE_TABLE' not in tables or 'NET_INCIDENT_TABLE' not in tables:
             raise CanonicalParseError(f'{data["name"]}: missing device or net-incident table')
-        devices = [Device(_decode(name), _decode(kind), _assignments(connections, Connection),
-                          _assignments(parameters, Parameter))
+        devices = [Device(decode(name), decode(kind), _assignments(connections, Connection, decode=decode, legacy=not current_format),
+                          _assignments(parameters, Parameter, decode=decode, legacy=not current_format))
                    for name, kind, connections, parameters in tables['DEVICE_TABLE']]
         _unique((d.name for d in devices), 'device names')
         by_name = {d.name.casefold(): i for i, d in enumerate(devices)}
@@ -254,7 +322,7 @@ def parse(text: str) -> CanonicalNetlist:
                     (device.name.casefold(), connection.pin.casefold())] += 1
         actual = {}
         for net, references in tables['NET_INCIDENT_TABLE']:
-            net = _decode(net).casefold()
+            net = decode(net).casefold()
             if net in actual:
                 raise CanonicalParseError('duplicate net-incident row')
             endpoints = Counter()
@@ -262,13 +330,15 @@ def parse(text: str) -> CanonicalNetlist:
                 parts = _split(ref, '.')
                 if len(parts) != 2:
                     raise CanonicalParseError(f'ambiguous incident reference {ref!r}; escape literal dots')
-                endpoints[tuple(_decode(p).casefold() for p in parts)] += 1
+                endpoints[tuple(decode(p).casefold() for p in parts)] += 1
             actual[net] = endpoints
         if actual != expected:
             raise CanonicalParseError(f'{data["name"]}: net-incident table disagrees with device connections or declared pins')
-        defaults = tuple(Parameter(_decode(n), _decode(v))
+        defaults = tuple(Parameter(decode(n), decode(v))
                          for n, v in tables.get('PARAMETER_DEFAULTS', []))
-        assignments = tuple(Parameter(_decode(n), _decode(v))
+        if any(not p.name for p in defaults):
+            raise CanonicalParseError('parameter defaults require nonempty names')
+        assignments = tuple(Parameter(decode(n), decode(v))
                             for n, v in tables.get('PARAMETER_ASSIGNMENTS', []))
         if any(not p.name or not p.value for p in assignments):
             raise CanonicalParseError('parameter assignments require nonempty names and values')
@@ -284,3 +354,78 @@ def parse(text: str) -> CanonicalNetlist:
         except ValueError as exc:
             raise CanonicalParseError(str(exc)) from exc
     return result
+
+
+def render(netlist: CanonicalNetlist, *, include_diagnostics: bool | None = None,
+           include_extensions: bool = True) -> str:
+    """Emit the UTF-8/LF table format; legacy spellings are input-only."""
+    from .extensions import _core_hosts, _row_keys
+    if not isinstance(netlist.extensions, CanonicalExtensions):
+        raise ValueError('expected a CanonicalExtensions envelope')
+    envelope = netlist.extensions if include_extensions else CanonicalExtensions()
+    if envelope:
+        envelope.validate(netlist)
+    diagnostic_columns = envelope.column_host(ExtensionScope(), 'DIAGNOSTICS')
+    if envelope and include_diagnostics is False and (netlist.diagnostics or diagnostic_columns is not None):
+        raise ValueError('cannot suppress diagnostics with attached extensions; use explicit core-only export')
+    hosts = _core_hosts(netlist)
+    sections = []
+
+    def emit(label, headers, rows, *, encoded=False):
+        lines = [label, ' | '.join(headers)]
+        for index, row in enumerate(rows, 1):
+            if len(row) == 1 and not row[0]:
+                raise CanonicalParseError(f'{label}, row {index}: empty one-column row is not representable')
+            values = []
+            for column, value in zip(headers, row):
+                context = f'{label}, row {index}, column {column}'
+                if encoded:
+                    _check_value(_decode(value), context)
+                    values.append(value)
+                else:
+                    values.append(_encode(value, context))
+            lines.append(' | '.join(values))
+        sections.append('\n'.join(lines))
+
+    def emit_host(scope, table, label):
+        host = hosts[scope, table]
+        extra = envelope.column_host(scope, table)
+        headers, rows = FILE_HEADERS[table], host.rows
+        if extra is not None:
+            by_key = dict(zip(_row_keys(host), rows))
+            rows = tuple((*by_key[key], *(_encode(value, f'{label}, row {index}, column {column}')
+                         for column, value in zip(extra.columns, values)))
+                         for index, (key, values) in enumerate(zip(extra.row_order, extra.rows), 1))
+            headers = (*headers, *extra.columns)
+        emit(label, headers, rows, encoded=True)
+
+    def emit_producers(scope, argument=''):
+        for item in envelope.tables:
+            if item.scope == scope:
+                emit(f'{item.namespace}:{item.name}{argument}', item.columns, item.rows)
+
+    if envelope.namespaces:
+        emit('NAMESPACES', ('namespace', 'version'),
+             ((item.name, str(item.version)) for item in envelope.namespaces))
+    emit_producers(ExtensionScope())
+    circuits = ((ExtensionScope('root', netlist.top.name), netlist.top), *(
+                (ExtensionScope('definition', c.name), c) for c in netlist.subcircuits))
+    for scope, circuit in circuits:
+        targeted = any(item.scope == scope for item in (*envelope.columns, *envelope.tables))
+        if scope.kind == 'root' and not (targeted or circuit.devices or circuit.pins or
+                circuit.parameter_defaults or circuit.parameter_assignments or circuit.name != 'TOP'):
+            continue
+        name = _encode(circuit.name, 'circuit name')
+        marker = 'TOP_PORTS' if scope.kind == 'root' else 'SUBCKT_PORTS'
+        emit_host(scope, 'PINS', f'{marker} {name}')
+        for table in FILE_NAMES:
+            if table == 'DIAGNOSTICS':
+                continue
+            if (hosts[scope, table].rows or table in ('NET_INCIDENT_TABLE', 'DEVICE_TABLE')
+                    or envelope.column_host(scope, table) is not None):
+                emit_host(scope, table, f'{FILE_NAMES[table]} {name}')
+        emit_producers(scope, f' {name}')
+    if ((include_diagnostics or envelope and include_diagnostics is None) and netlist.diagnostics
+            or diagnostic_columns is not None):
+        emit_host(ExtensionScope(), 'DIAGNOSTICS', 'DIAGNOSTICS')
+    return '\n\n'.join(sections) + ('\n' if sections else '')
