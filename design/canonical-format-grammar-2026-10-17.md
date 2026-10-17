@@ -73,8 +73,7 @@ nonempty_cell = ( plain | escape ), cell;
 plain         = ? Unicode scalar except backslash, vertical bar,
                   control characters and whitespace other than ASCII space ?;
 escape        = BS, ( BS | "|" | "n" | "r" | "t" | "s"
-                    | "," | "=" | "." | "u", hex, hex, hex, hex );
-hex           = digit | ? ASCII A through F or a through f ?;
+                    | "," | "=" | "." );
 BS            = ? U+005C backslash ?;
 LF            = ? U+000A line feed ?;
 
@@ -105,8 +104,8 @@ unescaped delimiters before decoding. A connection's key and value are a pin
 and a nonempty net name; a parameter key is nonempty but its raw value may be
 empty (`key=`). Incident components are nonempty device/pin names. An empty
 structured cell means an empty list. Significant edge spaces must be escaped,
-so whitespace alone is not a nonempty encoding. A Unicode escape must decode
-to a scalar value, excluding surrogate code points.
+so whitespace alone is not a nonempty encoding. Printable Unicode text remains
+literal; unsupported control and whitespace characters are errors.
 
 The schema determines whether a scope argument is required or forbidden, the
 required columns and their meaning. Root tables, definition tables, metadata
@@ -153,10 +152,15 @@ and undeclared namespace prefixes are errors.
   unknown or an omitted prerequisite. Empty required names and ports are invalid.
   There is no special empty-value escape. A literal backslash followed by e
   is encoded `\\e`, using the ordinary backslash escape.
-- Split delimiters before decoding. Preserve existing escapes: `\\`, `\|`,
-  `\n`, `\r`, `\t`, `\s`, `\uHHHH`. Significant edge spaces use `\s`;
-  control characters and Unicode separators are escaped. Raw cell and record
-  delimiters cannot occur inside a cell. Cells contain Unicode scalar values.
+- Split delimiters before decoding. Supported escapes are `\\`, `\|`,
+  `\n`, `\r`, `\t`, `\s` and the field-specific escapes below. Significant
+  edge spaces use `\s`. Printable Unicode text, such as `gain µV/V`, stays
+  literal. There is no Unicode escape syntax. Newline, carriage return and tab
+  use their named escapes; other control characters and whitespace other than
+  ASCII space are rejected, including Unicode line/paragraph separators.
+  Unsupported characters and escape sequences are explicit errors, never
+  silently removed or replaced. Raw cell and record delimiters cannot occur
+  inside a cell. Cells contain Unicode scalar values.
 - `connections` and `parameters` contain `key=value` items separated by commas.
   `incident_pins` contains `device.pin` items. Escape literal commas within
   items as `\,`, equals in keys as `\=`, and dots within incident device/pin
@@ -285,9 +289,11 @@ not a claim that shorter text or fewer table names automatically helps agents.
 New writers would emit one normal form. New readers would retain the current
 markers, headers and empty-cell spellings as a legacy input dialect, mapping to
 the same circuit objects and rejecting duplicate logical tables even across
-aliases. Legacy input may still contain the former empty-value escape. Reading
-that dialect must not silently discard data: exporting a legacy one-column
-empty row to the new form must fail explicitly, identifying the affected table,
+aliases. Legacy input may still contain the former empty-value and Unicode
+escapes; these are decoded when reading the legacy dialect. Exporting to the
+new form writes permitted characters literally or with supported named escapes.
+A legacy one-column empty row or a value containing a character forbidden by
+the new form must fail export explicitly, identifying the affected table/cell,
 until the producer or caller resolves it. There is no automatic row deletion or
 invented identifier. This is a representability check, not another syntax rule.
 Old readers cannot read the proposed new form; coordinate reader
