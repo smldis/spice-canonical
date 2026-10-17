@@ -126,7 +126,7 @@ def parse(text: str) -> CanonicalNetlist:
 
     def retain_columns(scope, kind, header, rows, width):
         if len(header) > width:
-            positional = kind in ('PARAMETER_DEFAULTS', 'DIAGNOSTICS')
+            positional = kind in ('PARAMETER_DEFAULTS', 'PARAMETER_ASSIGNMENTS', 'DIAGNOSTICS')
             keys = tuple(range(len(rows))) if positional else tuple(_decode(row[0]).casefold() for row in rows)
             column_hosts.append(ExtensionColumns(
                 scope, kind, header[width:], keys,
@@ -268,7 +268,11 @@ def parse(text: str) -> CanonicalNetlist:
             raise CanonicalParseError(f'{data["name"]}: net-incident table disagrees with device connections or declared pins')
         defaults = tuple(Parameter(_decode(n), _decode(v))
                          for n, v in tables.get('PARAMETER_DEFAULTS', []))
-        return Circuit(data['name'], data['pins'], tuple(devices), defaults)
+        assignments = tuple(Parameter(_decode(n), _decode(v))
+                            for n, v in tables.get('PARAMETER_ASSIGNMENTS', []))
+        if any(not p.name or not p.value for p in assignments):
+            raise CanonicalParseError('parameter assignments require nonempty names and values')
+        return Circuit(data['name'], data['pins'], tuple(devices), defaults, assignments)
 
     top = build(top_data) if top_data is not None else Circuit('TOP', (), ())
     result = CanonicalNetlist(top, tuple(build(circuits[name]) for name in order), tuple(diagnostics))

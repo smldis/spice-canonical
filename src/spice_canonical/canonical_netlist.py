@@ -43,7 +43,7 @@ class Connection:
 
 @dataclass(frozen=True)
 class Parameter:
-    """A declared default or explicit device parameter with an unevaluated value."""
+    """A default, .PARAM assignment or device parameter with an unevaluated value."""
 
     name: str
     value: str
@@ -70,12 +70,18 @@ class Device:
 
 @dataclass(frozen=True)
 class Circuit:
-    """The top level or one named subcircuit."""
+    """One scope: header defaults, body .PARAM assignments and devices.
+
+    Assignments retain declaration order, duplicates and unevaluated expressions;
+    the top circuit owns file-scope assignments. No parameter environment is
+    implicitly merged, resolved or applied to device overrides.
+    """
 
     name: str
     pins: tuple[str, ...]
     devices: tuple[Device, ...]
     parameter_defaults: tuple[Parameter, ...] = ()
+    parameter_assignments: tuple[Parameter, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -104,11 +110,11 @@ class CanonicalNetlist:
             from .extensions import render_extended
             return render_extended(self, include_diagnostics=include_diagnostics)
         sections = []
-        if self.top.devices or self.top.name != 'TOP' or self.top.pins or self.top.parameter_defaults:
+        if self.top.devices or self.top.name != 'TOP' or self.top.pins or self.top.parameter_defaults or self.top.parameter_assignments:
             sections.append(
                 f"TOP_LEVEL {_cell(self.top.name)}\n" +
                 ("pin\n" + "\n".join(map(_cell, self.top.pins)) + "\n" if self.top.pins else "") +
-                "\n" + _render_defaults(self.top) + _render_circuit_tables(self.top)
+                "\n" + _render_defaults(self.top) + _render_assignments(self.top) + _render_circuit_tables(self.top)
             )
         for circuit in self.subcircuits:
             sections.append(_render_subcircuit(circuit))
@@ -189,6 +195,7 @@ class _CircuitBuilder:
     pins: tuple[str, ...]
     raw_devices: list[_RawDevice]
     parameter_defaults: tuple[Parameter, ...] = ()
+    parameter_assignments: tuple[Parameter, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -239,7 +246,8 @@ def from_text(
     """Extract the canonical representation from a supported SPICE string.
 
     Common SPICE primitives and named subcircuit calls are resolved structurally.
-    Simulator directives are ignored. Unsupported device statements are retained
+    .PARAM assignments are preserved by scope; other simulator directives are ignored.
+    Unsupported device statements are retained
     as unresolved device rows and reported through ``diagnostics``.
     """
 
@@ -425,6 +433,11 @@ def _from_statements(
                     f".SUBCKT {current.name!r}"
                 )
             current = top
+            continue
+        if keyword == ".param":
+            current.parameter_assignments += _parse_parameter_assignments(
+                tokens[1:], statement.line, context=".PARAM assignments"
+            )
             continue
         if keyword == ".model":
             _record_model(tokens, statement.line, models)
@@ -614,25 +627,31 @@ def _parse_subckt_header(
 
 
 def _parse_parameter_defaults(tokens: Sequence[str], line: int) -> tuple[Parameter, ...]:
-    """Read declaration assignments without applying simulator parameter semantics."""
-    if tokens[0].casefold() in {"params:", "param:"}:
+    if tokens and tokens[0].casefold() in {"params:", "param:"}:
         tokens = tokens[1:]
+    return _parse_parameter_assignments(tokens, line, context=".SUBCKT defaults")
+
+
+def _parse_parameter_assignments(
+    tokens: Sequence[str], line: int, *, context: str
+) -> tuple[Parameter, ...]:
+    """Read ordered assignments without applying simulator parameter semantics."""
     try:
         if not tokens or any(t.casefold() in {"params:", "param:"} for t in tokens):
-            raise CanonicalParseError("expected default assignments")
+            raise CanonicalParseError("expected assignments")
         positional, parameters = _split_parameters(tokens)
         if positional:
-            raise CanonicalParseError(f"expected default assignment, got {positional[0]!r}")
+            raise CanonicalParseError(f"expected assignment, got {positional[0]!r}")
         for parameter in parameters:
             if not re.fullmatch(r"[^=\s\[\]{}()\"\']+", parameter.name):
-                raise CanonicalParseError(f"invalid default name {parameter.name!r}")
+                raise CanonicalParseError(f"invalid parameter name {parameter.name!r}")
             if not parameter.value or not _split_tokens(
                 parameter.value, default_value=True
             ):
-                raise CanonicalParseError(f"missing value for default {parameter.name!r}")
+                raise CanonicalParseError(f"missing value for parameter {parameter.name!r}")
     except CanonicalParseError as error:
         raise CanonicalParseError(
-            f"line {line}: malformed .SUBCKT defaults: {error}"
+            f"line {line}: malformed {context}: {error}"
         ) from error
     return tuple(parameters)
 
@@ -679,6 +698,7 @@ def _build_circuit(
         pins=builder.pins,
         devices=devices,
         parameter_defaults=builder.parameter_defaults,
+        parameter_assignments=builder.parameter_assignments,
     )
 
 
@@ -952,7 +972,7 @@ def _parameter_value(parameters: Sequence[Parameter], name: str) -> str | None:
 
 def _render_subcircuit(circuit: Circuit) -> str:
     pins = "\n".join([f"SUBCKT {_cell(circuit.name)}", "pin", *map(_cell, circuit.pins)])
-    return pins + "\n\n" + _render_defaults(circuit) + _render_circuit_tables(circuit)
+    return pins + "\n\n" + _render_defaults(circuit) + _render_assignments(circuit) + _render_circuit_tables(circuit)
 
 
 def _render_defaults(circuit: Circuit) -> str:
@@ -962,6 +982,16 @@ def _render_defaults(circuit: Circuit) -> str:
                 "name | value",
                 *(f"{_cell(p.name)} | {_cell(p.value)}" for p in circuit.parameter_defaults),
             ]) + "\n\n"
+    return ''
+
+
+def _render_assignments(circuit: Circuit) -> str:
+    if circuit.parameter_assignments:
+        return "\n".join([
+            f"PARAMETER_ASSIGNMENTS {_cell(circuit.name)}",
+            "name | value",
+            *(f"{_cell(p.name)} | {_cell(p.value)}" for p in circuit.parameter_assignments),
+        ]) + "\n\n"
     return ''
 
 

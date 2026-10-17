@@ -21,6 +21,7 @@ _LOCAL = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
 CORE_HEADERS = {
     "PINS": ("pin",),
     "PARAMETER_DEFAULTS": ("name", "value"),
+    "PARAMETER_ASSIGNMENTS": ("name", "value"),
     "NET_INCIDENT_TABLE": ("net", "incident pins"),
     "DEVICE_TABLE": ("name", "type", "connections", "parameters"),
     "BLACK_BOX_TABLE": ("name", "cell", "pin_basis"),
@@ -128,7 +129,7 @@ class ExtensionColumns:
             qualified_name(column)
         if type(self.row_order) is not tuple:
             raise ValueError("extension row order must be an immutable tuple")
-        positional = self.table in ("PARAMETER_DEFAULTS", "DIAGNOSTICS")
+        positional = self.table in ("PARAMETER_DEFAULTS", "PARAMETER_ASSIGNMENTS", "DIAGNOSTICS")
         for key in self.row_order:
             if positional:
                 if type(key) is not int or key < 0:
@@ -206,7 +207,7 @@ class CanonicalExtensions:
             host = hosts.get((column.scope, column.table))
             if host is None or set(column.row_order) != set(_row_keys(host)):
                 raise ValueError("extension columns disagree with their host rows")
-            if column.table in ("PINS", "DEVICE_TABLE", "PARAMETER_DEFAULTS", "DIAGNOSTICS") and column.row_order != _row_keys(host):
+            if column.table in ("PINS", "DEVICE_TABLE", "PARAMETER_DEFAULTS", "PARAMETER_ASSIGNMENTS", "DIAGNOSTICS") and column.row_order != _row_keys(host):
                 raise ValueError("ordered core host rows must retain represented order")
         if check_core:
             # Validate authored core objects too; loading never opens source paths.
@@ -216,7 +217,13 @@ class CanonicalExtensions:
 
 def core_digest(netlist: CanonicalNetlist) -> str:
     """Exact ordered represented snapshot, including diagnostics; no annotations."""
-    document = {"top": asdict(netlist.top), "subcircuits": [asdict(c) for c in netlist.subcircuits],
+    def circuit_data(circuit):
+        data = asdict(circuit)
+        # Preserve guards for older parameter-free snapshots.
+        if not circuit.parameter_assignments:
+            data.pop("parameter_assignments")
+        return data
+    document = {"top": circuit_data(netlist.top), "subcircuits": [circuit_data(c) for c in netlist.subcircuits],
                 "diagnostics": [asdict(d) for d in netlist.diagnostics]}
     def encode(value):
         if isinstance(value, Path):
@@ -234,15 +241,15 @@ class _Host:
 
 
 def _core_hosts(netlist: CanonicalNetlist) -> dict[tuple[ExtensionScope, str], _Host]:
-    from .canonical_netlist import _cell, _render_circuit_tables, _render_defaults
+    from .canonical_netlist import _cell, _render_circuit_tables, _render_defaults, _render_assignments
     from .canonical_text import _split
     result = {}
     for scope, circuit in ((ExtensionScope("root", netlist.top.name), netlist.top),
                            *((ExtensionScope("definition", c.name), c) for c in netlist.subcircuits)):
-        for table in ("PINS", "PARAMETER_DEFAULTS", "NET_INCIDENT_TABLE", "DEVICE_TABLE", "BLACK_BOX_TABLE"):
+        for table in ("PINS", "PARAMETER_DEFAULTS", "PARAMETER_ASSIGNMENTS", "NET_INCIDENT_TABLE", "DEVICE_TABLE", "BLACK_BOX_TABLE"):
             result[scope, table] = _Host(scope, table, CORE_HEADERS[table], ())
         result[scope, "PINS"] = _Host(scope, "PINS", ("pin",), tuple((_cell(pin),) for pin in circuit.pins))
-        text = _render_defaults(circuit) + _render_circuit_tables(circuit)
+        text = _render_defaults(circuit) + _render_assignments(circuit) + _render_circuit_tables(circuit)
         for block in text.strip("\n").split("\n\n"):
             lines = block.split("\n")
             table = lines[0].partition(" ")[0]
@@ -257,7 +264,7 @@ def _core_hosts(netlist: CanonicalNetlist) -> dict[tuple[ExtensionScope, str], _
 
 def _row_keys(host: _Host) -> tuple[str | int, ...]:
     from .canonical_text import _decode
-    if host.table in ("PARAMETER_DEFAULTS", "DIAGNOSTICS"):
+    if host.table in ("PARAMETER_DEFAULTS", "PARAMETER_ASSIGNMENTS", "DIAGNOSTICS"):
         return tuple(range(len(host.rows)))
     return tuple(_decode(row[0]).casefold() for row in host.rows)
 
@@ -404,12 +411,12 @@ def render_extended(netlist: CanonicalNetlist, *, include_diagnostics: bool | No
     for scope, circuit in circuits:
         targeted = any(item.scope == scope for item in (*envelope.columns, *envelope.tables))
         if scope.kind == "root" and not (targeted or circuit.devices or circuit.pins or
-                                        circuit.parameter_defaults or circuit.name != "TOP"):
+                                        circuit.parameter_defaults or circuit.parameter_assignments or circuit.name != "TOP"):
             continue
         name = _cell(circuit.name)
         marker = "TOP_LEVEL" if scope.kind == "root" else "SUBCKT"
         sections.append(emit_host(scope, "PINS", f"{marker} {name}"))
-        for table in ("PARAMETER_DEFAULTS", "NET_INCIDENT_TABLE", "DEVICE_TABLE", "BLACK_BOX_TABLE"):
+        for table in ("PARAMETER_DEFAULTS", "PARAMETER_ASSIGNMENTS", "NET_INCIDENT_TABLE", "DEVICE_TABLE", "BLACK_BOX_TABLE"):
             if (hosts[scope, table].rows or table in ("NET_INCIDENT_TABLE", "DEVICE_TABLE")
                     or envelope.column_host(scope, table) is not None):
                 sections.append(emit_host(scope, table, f"{table} {name}"))

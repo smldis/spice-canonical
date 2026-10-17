@@ -178,6 +178,37 @@ The extractor does not infer or expand bus semantics that are not present in the
 source. A whole-bus name and a bit of that bus are distinct net names, and
 nothing relates them.
 
+## Operative parameter assignments
+
+All top-level `.PARAM` declarations are grouped into one root table, even if
+that root has no devices:
+
+```text
+TOP_LEVEL TOP
+
+PARAMETER_ASSIGNMENTS TOP
+name | value
+PAIR_W | 2u
+PAIR_L | {PAIR_W / 4}
+BIAS | 10u
+```
+
+This is `netlist.top.parameter_assignments` in Python. A subcircuit-body `.PARAM`
+uses the same optional table in its definition scope. `.SUBCKT` header defaults
+remain in `PARAMETER_DEFAULTS`; explicit instance overrides remain in device
+rows. These are different sources of parameter context, not interchangeable
+fallback defaults. Instance expressions retain their symbols, so a MOS row may
+still contain `w={PAIR_W}, l={PAIR_L}` alongside those declarations.
+
+Rows preserve source traversal order, duplicates and raw expression strings.
+No dictionary collapse or numerical substitution is performed. Declaration-line
+grouping, comments and placement relative to device statements are not retained;
+this artifact does not reproduce simulator execution or resolve precedence.
+Opaque or unavailable libraries can leave additional bindings unknown.
+A selected definition alone does not carry file-scope assignments:
+`definition_library` preserves them on its otherwise empty root when exporting
+the definition and its reachable children.
+
 ## Delimiters
 
 The structural punctuation is deliberately small:
@@ -242,7 +273,7 @@ source | line | message
 An empty source cell represents no source path. Paths are evidence only: loading
 a canonical artifact never opens its original source, includes or libraries.
 Extended artifacts retain diagnostics by default, as described below.
-The reader preserves defaults, duplicate parameter entries, unused interface
+The reader preserves defaults, scoped assignments, duplicate parameter entries, unused interface
 pins, black-box markers and any included diagnostics. It requires blank lines
 between table blocks, rejects unknown unqualified/duplicate tables and invalid fields, and
 checks reciprocal net/device incidence. The top-level circuit and subcircuit definitions have
@@ -307,7 +338,7 @@ its argument uses ordinary cell escaping and must match that circuit. With no
 argument it is document-scoped and does not reset the current circuit scope.
 Table identity includes scope, namespace and local name. A root `TOP` and a
 definition `TOP` are distinct. Additional columns are supported on interface pin
-tables, parameter defaults, net incidence, devices, black boxes and diagnostics.
+tables, parameter defaults and assignments, net incidence, devices, black boxes and diagnostics.
 
 ### Python authoring and inspection
 
@@ -344,16 +375,16 @@ collections are tuples; cells are strings.
 
 `ExtensionScope()` is document scope; root and definition scopes require a name,
 stored case-folded to match structural identity rules. Column host names are
-`PINS`, `PARAMETER_DEFAULTS`, `NET_INCIDENT_TABLE`, `DEVICE_TABLE`,
+`PINS`, `PARAMETER_DEFAULTS`, `PARAMETER_ASSIGNMENTS`, `NET_INCIDENT_TABLE`, `DEVICE_TABLE`,
 `BLACK_BOX_TABLE` and `DIAGNOSTICS`. `PINS` identifies the inline interface table
 after the root/definition marker; it is not a standalone file marker.
 Diagnostics require document scope; other column hosts require a circuit scope.
 
 Column value mappings use case-insensitive device/net/pin names for named hosts,
-and zero-based occurrence indices for ordered defaults and diagnostics. Omitted
+and zero-based occurrence indices for ordered defaults, assignments and diagnostics. Omitted
 mapping keys yield empty cells; unknown or duplicate normalized keys fail.
-Sequence values follow the host's retained row order. Duplicate defaults and
-diagnostics remain separate positional occurrences, not durable entity IDs.
+Sequence values follow the host's retained row order. Duplicate defaults,
+assignments and diagnostics remain separate positional occurrences, not durable entity IDs.
 
 ### Preservation and mutation boundaries
 
@@ -390,6 +421,7 @@ consumer identity contract.
 
 ## What the representation omits
 
-Analysis commands, options, model bodies, global parameters, and other simulator
-directives are intentionally omitted from the structural representation. The
-original Eldo or ngspice deck remains the authoritative source for simulation.
+Analysis commands, options, model bodies, and other simulator
+directives apart from represented `.PARAM` assignments are intentionally omitted
+from the structural representation. The original Eldo or ngspice deck remains
+the authoritative source for simulation.

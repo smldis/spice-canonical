@@ -33,10 +33,14 @@ from an attempt at speculative or exhaustive dialect coverage.
   defaults are ordered `Parameter` values on `Circuit.parameter_defaults` and
   optional definition-scoped `PARAMETER_DEFAULTS` tables. Names and raw expressions
   survive extraction and device-type normalization; instance parameters remain
-  explicit overrides. Default-free rendering and three-argument Circuit
-  construction retain their previous behavior.
+  explicit overrides. Operative `.PARAM` declarations are ordered values on
+  `Circuit.parameter_assignments`: all file-scope declarations share one root
+  `PARAMETER_ASSIGNMENTS` table; local body declarations belong to their definition.
+  Duplicate names and expressions survive, including parameter-only roots and
+  definition-library export. Inputs without defaults/assignments and existing
+  three-/four-argument Circuit construction retain their previous behavior.
 - Malformed declaration assignments raise structural errors; expression evaluation,
-  default expansion, global `.PARAM` semantics, and model-body interpretation
+  parameter precedence, default expansion, and model-body interpretation
   remain outside this extraction contract. `from_canonical_text` and
   `from_canonical_file` load the custom rendered tables without re-extraction.
 
@@ -45,6 +49,16 @@ fixtures now distinguish it without resolving simulator semantics. This evidence
 supports preserving declared configuration beside connectivity: graph structure
 alone cannot expose every meaningful input change, and retaining an expression
 is a narrower commitment than interpreting it.
+
+The sized-circuit handoff exposed the same boundary for operative `.PARAM`
+assignments: excluding evaluation had also excluded declarations from saved core
+objects. That omission is now revised explicitly. Source-owned parameter context
+belongs in canonical core rather than a producer namespace, so dropping analysis
+annotations cannot drop supplied sizing/bias values. A single root table groups
+all top-level declarations; it preserves ordered raw ties, not a simulator's
+resolved parameter environment. Old parameter-free snapshot guards retain their
+identity; assignment changes participate in new guards. Selected `Circuit`
+objects still need their enclosing netlist for global context.
 
 ## Contribution to the parent
 

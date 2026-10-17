@@ -13,8 +13,12 @@ The Python API is `spice_canonical.canonical_netlist`. Includes are expanded
 recursively; model libraries can remain opaque; strict mode turns unresolved or
 unsupported structures into failures. Subcircuit declaration defaults are retained
 as ordered, unevaluated `Circuit.parameter_defaults` and optional
-`PARAMETER_DEFAULTS` tables, separately from instance overrides. Global `.PARAM`
-and model-body semantics are not implemented.
+`PARAMETER_DEFAULTS` tables, separately from instance overrides. Operative `.PARAM`
+assignments are retained in `Circuit.parameter_assignments`: all file-scope
+assignments share one `PARAMETER_ASSIGNMENTS` table on the root, even when the
+root has no devices. Subcircuit-body assignments belong to that definition.
+Expressions remain raw; parameter evaluation and model-body semantics are not
+implemented.
 
 With ngspice installed, the optional network-backed corpus check is:
 

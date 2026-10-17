@@ -2,7 +2,11 @@
 
 `spice_canonical.inspect` reads the existing dataclasses. The direct root is
 `netlist.top` after include expansion, without descending into called cells.
-It does not contain every statement physically in the root file.
+It does not contain every statement physically in the root file. File-scope
+`.PARAM` assignments are on `netlist.top.parameter_assignments`; local body
+assignments are on each definition's `parameter_assignments`. Header defaults
+remain separate. `definition_library` retains file-scope assignments on its empty
+root so exporting a definition does not silently erase its supplied context.
 
 ```python
 from collections import Counter
