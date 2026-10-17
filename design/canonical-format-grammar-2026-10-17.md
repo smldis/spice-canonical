@@ -36,22 +36,76 @@ establish. A definition-only library omits `TOP_PORTS`.
 
 ## Simple grammar
 
-Quoted text is literal; `[]` means optional and `{}` means zero or more
-repetitions. `LF` is a line feed. `table_name` is a core name from the schema
-below or a namespaced producer name. `scope_name` is an encoded circuit name.
+Quoted text is literal; `[]` means optional, `{}` means zero or more
+repetitions, and `? ... ?` describes a character class. Productions describe the
+normal writer form, before escape decoding. The schema below adds column types,
+scope requirements and validity rules.
 
 ```ebnf
 file   = [ table, { gap, table } ], [ LF ];
 table  = label, LF, header, { LF, row };
 label  = table_name, [ " ", scope_name ];
 header = column, { " | ", column };
-row    = cell, { " | ", cell };
+row    = cell, " | ", cell, { " | ", cell }
+       | nonempty_cell | empty_row;
 gap    = LF, LF, { LF };
 
-table_name     = core_table | qualified_name;
+table_name = core_table | qualified_name;
+core_table = "TOP_PORTS" | "SUBCKT_PORTS"
+           | "PARAMETER_DEFAULTS" | "PARAMETER_ASSIGNMENTS"
+           | "NETS" | "DEVICES" | "BLACK_BOXES"
+           | "NAMESPACES" | "DIAGNOSTICS";
 column         = local_name | qualified_name;
 qualified_name = namespace, ":", local_name;
+namespace      = segment, ".", segment, { ".", segment };
+segment        = lower, { lower | digit | "_" | "-" };
+local_name     = letter, { letter | digit | "_" | "-" };
+letter         = lower | ? ASCII A through Z ?;
+lower          = ? ASCII a through z ?;
+digit          = "0" | nonzero_digit;
+nonzero_digit  = ? ASCII 1 through 9 ?;
+version        = nonzero_digit, { digit };
+line_number    = "0" | version;
+
+scope_name    = nonempty_cell;
+cell          = { plain | escape };
+nonempty_cell = ( plain | escape ), cell;
+empty_row     = BS, "e";
+plain         = ? Unicode scalar except backslash, vertical bar,
+                  control characters and whitespace other than ASCII space ?;
+escape        = BS, ( BS | "|" | "n" | "r" | "t" | "s"
+                    | "," | "=" | "." | "u", hex, hex, hex, hex );
+hex           = digit | ? ASCII A through F or a through f ?;
+BS            = ? U+005C backslash ?;
+LF            = ? U+000A line feed ?;
+
+connections   = [ assignment, { ", ", assignment } ];
+parameters    = [ assignment, { ", ", assignment } ];
+assignment    = key, "=", value;
+key           = key_char, { key_char };
+key_char      = escape | ? plain character except comma or equals ?;
+value         = { value_char };
+value_char    = escape | ? plain character except comma ?;
+incident_pins = [ incident, { ", ", incident } ];
+incident      = incident_name, ".", incident_name;
+incident_name = incident_char, { incident_char };
+incident_char = escape | ? plain character except comma or dot ?;
 ```
+
+A row with two or more columns contains delimiters even when all cells are
+empty. A one-column row must contain a nonempty encoding; `empty_row` is the
+exceptional spelling for one empty value. Blank physical lines separate tables
+and never count as rows. Thus zero rows and one empty row remain distinct.
+`empty_row` is legal only for a one-column table whose schema permits an empty
+value; it is not an escape to insert inside other text.
+
+Structured-field productions refine `cell` for the named core columns. Split
+unescaped delimiters before decoding. A connection's key and value are a pin
+and a nonempty net name; a parameter key is nonempty but its raw value may be
+empty (`key=`). Incident components are nonempty device/pin names. An empty
+structured cell means an empty list. Significant edge spaces must be escaped,
+so whitespace alone is not a nonempty encoding. A Unicode escape must decode
+to a scalar value, excluding surrogate code points.
 
 The schema determines whether a scope argument is required or forbidden, the
 required columns and their meaning. Root tables, definition tables, metadata
@@ -93,10 +147,11 @@ and undeclared namespace prefixes are errors.
   columns and `, ` between list items. There are no alignment spaces, Markdown
   separator rows or inline comments. A reader can tolerate ordinary surrounding
   formatting whitespace without changing escaped spaces.
-- `\e` uniformly encodes an empty cell. In a list-valued field it means an empty
-  list. This differs from zero rows, null, unknown or an omitted prerequisite.
-  Empty required names and ports are invalid. A literal backslash followed by
-  e is encoded `\\e`.
+- Leave ordinary empty cells blank: `X1 | divider | IN=input | ` has no
+  parameter overrides. Empty list-valued cells mean empty lists, not null,
+  unknown or an omitted prerequisite. Empty required names and ports are invalid.
+  Reserve `\e` for an otherwise invisible empty row in a one-column producer
+  table. A literal backslash followed by e is encoded `\\e`.
 - Split delimiters before decoding. Preserve existing escapes: `\\`, `\|`,
   `\n`, `\r`, `\t`, `\s`, `\uHHHH`. Significant edge spaces use `\s`;
   control characters and Unicode separators are escaped. Raw cell and record
@@ -112,7 +167,8 @@ and undeclared namespace prefixes are errors.
 - Namespace segments match `[a-z][a-z0-9_-]*`, with at least two dot-separated
   segments. Local identifiers match `[A-Za-z][A-Za-z0-9_-]*`. Namespace versions
   are positive ASCII decimal integers without leading zeros. Diagnostic line
-  numbers are nonnegative decimal integers. An absent diagnostic source is `\e`.
+  numbers are nonnegative decimal integers. An absent diagnostic source is a
+  blank cell.
 
 ## Scope, order and validity
 
@@ -160,7 +216,7 @@ output | X1.OUT
 
 DEVICES TOP
 device | type | connections | parameters | org.example.analysis:role
-X1 | divider | IN=input, OUT=output, RET=0 | \e | divider_instance
+X1 | divider | IN=input, OUT=output, RET=0 |  | divider_instance
 
 SUBCKT_PORTS divider
 port
@@ -199,6 +255,24 @@ annotates X1; the qualified `notes` table belongs to the divider definition.
 These are synthetic producer data, not built-in electrical facts. Omitting the
 scope argument from a producer table makes it document-scoped. The declaration
 must precede use, and unknown declared schemas must still be preserved.
+
+An empty ordinary cell needs no marker. For example, the two adjacent
+separators in X1's row enclose an empty `parameters` cell. The only exceptional
+case is a one-column producer table:
+
+```text
+org.example.analysis:notes divider
+text
+\e
+```
+
+This contains one empty note. The same label and header with no data line
+contains zero notes. Leaving that one row blank would erase the distinction
+because blank lines separate tables. Existing preservation coverage explicitly
+checks this distinction in `tests/test_extensions.py`, including opaque producer
+data. Eliminating `\e` entirely would require another row boundary convention
+(such as enclosing every row in pipes) or dropping the distinction. Neither
+change is needed just to allow ordinary blank cells.
 
 ## Other simplifications considered
 
