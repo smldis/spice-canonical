@@ -33,14 +33,20 @@ handle:
 | `subcircuits` | one `Circuit` per `.SUBCKT`, in declaration order |
 | `diagnostics` | a `Diagnostic` per non-fatal omission or assumption |
 
-A `Circuit` carries `name`, `pins`, `devices`, and
-`parameter_defaults: tuple[Parameter, ...] = ()`. The optional final field keeps
-existing three-argument constructors usable. Each `Parameter` has a `name` and
-raw, unevaluated `value`; defaults retain declaration order and spelling.
+A `Circuit` carries `name`, `pins`, `devices`, and two optional fields:
+`parameter_defaults: tuple[Parameter, ...] = ()` for `.SUBCKT` header defaults,
+and `parameter_assignments: tuple[Parameter, ...] = ()` for `.PARAM` declarations
+in that scope. Existing three- and four-argument constructors remain usable.
+Each `Parameter` has a `name` and raw, unevaluated `value`; both collections
+retain declaration order, spelling and duplicate names. File-scope assignments
+belong to `netlist.top`, including decks containing only subcircuit definitions.
+Assignments inside a definition belong to that `Circuit`, never to the root.
 A `Device` carries `name`, `type`, `connections`, and `parameters`; subcircuit
 instance parameters remain explicit overrides. `render()` produces the tabular
 text, including a `PARAMETER_DEFAULTS` table for definitions with defaults.
-`normalize_device_types` preserves circuit defaults.
+All top-level `.PARAM` declarations share one `PARAMETER_ASSIGNMENTS` table;
+local declarations share one table in their definition. `normalize_device_types`
+preserves both defaults and assignments.
 `render()` omits diagnostic rows by default; use
 `render(include_diagnostics=True)` when the saved table should retain them.
 The `CanonicalNetlist.diagnostics` field remains available either way.
@@ -55,10 +61,15 @@ parameter marker, bare tokens are pins, so a missing `=` cannot always be
 inferred. Expression validity and duplicate-name precedence are left to the
 simulator.
 
-Defaults are not evaluated, substituted into device expressions, or expanded
-into instances. Global `.PARAM` semantics and model-body interpretation remain
-deferred and omitted from canonical data (the existing `.MODEL` name/type
-refinement still applies). Use `from_canonical_file("canonical.txt")` or
+Defaults and assignments are not evaluated, substituted into device expressions,
+or expanded into instances. Raw ties such as `W={PAIR_W}` remain beside the
+operative `.PARAM PAIR_W=2u` declaration. Binding precedence and model-body
+interpretation remain deferred (the existing `.MODEL` name/type refinement still
+applies). Includes contribute assignments at their lexical circuit scope and
+traversal order; stopped/missing includes and opaque `.LIB` sections supply no
+invented bindings. Commands inside ngspice `.CONTROL` blocks are excluded.
+Malformed `.PARAM` assignments fail explicitly instead of disappearing.
+Use `from_canonical_file("canonical.txt")` or
 `from_canonical_text(text)` from the same module to reload saved custom tables.
 They preserve black-box interfaces and any diagnostic rows explicitly included
 in the saved file without reopening SPICE files.

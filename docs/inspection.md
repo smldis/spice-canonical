@@ -2,7 +2,11 @@
 
 `spice_canonical.inspect` reads the existing dataclasses. The direct root is
 `netlist.top` after include expansion, without descending into called cells.
-It does not contain every statement physically in the root file.
+It does not contain every statement physically in the root file. File-scope
+`.PARAM` assignments are on `netlist.top.parameter_assignments`; local body
+assignments are on each definition's `parameter_assignments`. Header defaults
+remain separate. `definition_library` retains file-scope assignments on its empty
+root so exporting a definition does not silently erase its supplied context.
 
 ```python
 from collections import Counter
@@ -57,6 +61,14 @@ values are never evaluated, and defaults remain separate from overrides.
 `top_level_netlist` omits definition bodies and marks calls to those omitted
 definitions as named black boxes. Existing external black boxes retain their
 pin basis; unresolved and ambiguous calls are not given guessed identities.
+
+On extension-bearing snapshots, top-only and definition-library export require
+explicit `netlist.without_extensions()` first. Their scope changes cannot safely
+rewrite references in arbitrary producer tables. Read-only reports, connectivity
+and expansion still consume the structural view without modifying the envelope.
+Type normalization preserves extensions only when the represented core is
+unchanged. See [namespaced artifact data](representation.md#namespaced-tables-and-columns)
+for snapshot guards and preserving versus core-only output.
 
 Graph paths are structural incidence, not conduction or signal flow. Coupling
 and control references stored in parameters add no graph edges. A graph of an

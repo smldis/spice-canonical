@@ -178,6 +178,37 @@ The extractor does not infer or expand bus semantics that are not present in the
 source. A whole-bus name and a bit of that bus are distinct net names, and
 nothing relates them.
 
+## Operative parameter assignments
+
+All top-level `.PARAM` declarations are grouped into one root table, even if
+that root has no devices:
+
+```text
+TOP_LEVEL TOP
+
+PARAMETER_ASSIGNMENTS TOP
+name | value
+PAIR_W | 2u
+PAIR_L | {PAIR_W / 4}
+BIAS | 10u
+```
+
+This is `netlist.top.parameter_assignments` in Python. A subcircuit-body `.PARAM`
+uses the same optional table in its definition scope. `.SUBCKT` header defaults
+remain in `PARAMETER_DEFAULTS`; explicit instance overrides remain in device
+rows. These are different sources of parameter context, not interchangeable
+fallback defaults. Instance expressions retain their symbols, so a MOS row may
+still contain `w={PAIR_W}, l={PAIR_L}` alongside those declarations.
+
+Rows preserve source traversal order, duplicates and raw expression strings.
+No dictionary collapse or numerical substitution is performed. Declaration-line
+grouping, comments and placement relative to device statements are not retained;
+this artifact does not reproduce simulator execution or resolve precedence.
+Opaque or unavailable libraries can leave additional bindings unknown.
+A selected definition alone does not carry file-scope assignments:
+`definition_library` preserves them on its otherwise empty root when exporting
+the definition and its reachable children.
+
 ## Delimiters
 
 The structural punctuation is deliberately small:
@@ -187,7 +218,7 @@ The structural punctuation is deliberately small:
 ,     separates items within a cell
 .     separates an instance name from its pin
 =     maps a pin to a net or a parameter to a value
-:     is not a structural delimiter; it remains available for bus ranges
+:     qualifies extension identifiers; inside core cells it remains available for bus ranges
 < >   enclose bus indices and ranges
 ```
 
@@ -199,6 +230,14 @@ the instance or pin name as `\.`. Reading restores the original strings.
 Earlier grouped/quoted parameter expressions with unescaped commas remain
 readable. Ambiguous old incident references containing literal dots must be
 escaped or re-extracted; the reader does not guess their boundaries.
+
+Other control characters and Unicode whitespace/separators use four-digit
+Unicode escapes such as `\u000b`, `\u00a0` and `\u2028`. The record separator is
+LF; only ASCII space/tab and a CR from CRLF formatting are trimmed. Extension
+strings contain Unicode scalar values, including ordinary non-ASCII text.
+An extension cell containing only `\e` means the empty string. This makes a
+one-column empty row distinct from a table with zero rows. A literal backslash
+before `e` is escaped normally. JSON, `null`, URLs and paths remain strings.
 
 ## External cells and saved diagnostics
 
@@ -221,7 +260,7 @@ or `positional`. The Python equivalent is `Device.black_box = BlackBox(cell,
 pin_basis)`; ordinary devices and implemented calls have `black_box=None`.
 This states neither an implementation nor electrical equivalence.
 
-An optional final table preserves extraction diagnostics. `render()` omits it by
+An optional final table preserves extraction diagnostics. Plain `render()` omits it by
 default; `render(include_diagnostics=True)` or the CLI's
 `--include-diagnostics` flag adds it:
 
@@ -233,9 +272,10 @@ source | line | message
 
 An empty source cell represents no source path. Paths are evidence only: loading
 a canonical artifact never opens its original source, includes or libraries.
-The reader preserves defaults, duplicate parameter entries, unused interface
+Extended artifacts retain diagnostics by default, as described below.
+The reader preserves defaults, scoped assignments, duplicate parameter entries, unused interface
 pins, black-box markers and any included diagnostics. It requires blank lines
-between table blocks, rejects unknown/duplicate tables and invalid fields, and
+between table blocks, rejects unknown unqualified/duplicate tables and invalid fields, and
 checks reciprocal net/device incidence. The top-level circuit and subcircuit definitions have
 separate name scopes: a `.SUBCKT TOP` may coexist with `TOP_LEVEL TOP`, and a
 black-box cell called `TOP` does not imply an implementation in the top-level
@@ -243,26 +283,145 @@ circuit. Device/net row ordering need not agree. Files rendered by
 older versions without metadata tables remain readable when unambiguous, but
 diagnostics absent from a saved file cannot be recovered from that file.
 
-## Annotations
+## Namespaced tables and columns
 
-The core form is structural. Information not explicitly encoded by ordinary
-SPICE, such as pin direction or signal class, can be added later as columns:
+Projects can carry their own information in the same artifact without changing
+structural fields or installing the producer. A single preamble precedes all
+circuits and declares every namespace used, including otherwise unused ones:
 
 ```text
-SUBCKT INV
-pin | direction | class
-A | input | signal
-Y | output | signal
-VDD | input | power
-VSS | input | ground
+EXTENSION_NAMESPACES
+namespace | version
+org.example.analysis | 1
+
+TOP_LEVEL TOP
+pin
+
+NET_INCIDENT_TABLE TOP
+net | incident pins
+out | R1.p
+0 | R1.n
+
+DEVICE_TABLE TOP
+name | type | connections | parameters | org.example.analysis:role
+R1 | resistor | p=out, n=0 | value=1k | load_candidate
+
+org.example.analysis:findings TOP
+id | kind | rule
+load1 | output_load | demonstration
 ```
 
-Inferred annotations should carry provenance or confidence separately from the
-structural extraction. Nothing emits these columns today; the shape is reserved,
-not implemented.
+This synthetic example illustrates transport, not a recognized electrical fact.
+Projects can define separate findings, membership, net-role and evidence tables
+for overlapping interpretations; an element need not belong exclusively to one
+block. Canonical does not standardize those schemas.
+
+Namespace segments match `[a-z][a-z0-9_-]*`, separated by dots, with at least
+two segments. Use an authority/project ID under your control for public schemas,
+or a documented `private.<project>` convention locally. Names do not authenticate
+ownership and no registry is consulted. A positive ASCII decimal integer, without
+leading zeros, identifies the complete namespace schema rather than its package
+release. One version per namespace is allowed in a file; duplicate declarations
+fail. A fork or uncoordinated schema uses its own namespace.
+
+Table markers and appended core-column headers use `namespace:local`; local
+identifiers match `[A-Za-z][A-Za-z0-9_-]*` and are case-sensitive. Namespace
+identifiers are lowercase. Required core headers retain their spelling/order;
+extra headers follow them. Custom table headers are nonempty unique local
+identifiers. Rows must have the declared width. Namespace metadata itself is
+not extensible. Unknown declared namespaces and versions are preserved;
+unknown unqualified markers and undeclared prefixes fail. Preserving an unknown
+version does not authorize interpreting it or imply future core-grammar support.
+
+A custom table with a circuit argument belongs to the current root/definition;
+its argument uses ordinary cell escaping and must match that circuit. With no
+argument it is document-scoped and does not reset the current circuit scope.
+Table identity includes scope, namespace and local name. A root `TOP` and a
+definition `TOP` are distinct. Additional columns are supported on interface pin
+tables, parameter defaults and assignments, net incidence, devices, black boxes and diagnostics.
+
+### Python authoring and inspection
+
+The public types are available from `spice_canonical.canonical_netlist`:
+
+```python
+from spice_canonical.canonical_netlist import (
+    ExtensionScope, ExtensionTable, from_text, from_canonical_text,
+)
+
+netlist = from_text("R1 out 0 1k\n")
+scope = ExtensionScope("root", "TOP")
+namespace = "org.example.analysis"
+netlist = netlist.with_namespace(namespace, 1)
+netlist = netlist.with_column(
+    namespace, "role", scope=scope, table="DEVICE_TABLE",
+    values={"R1": "load_candidate"},
+)
+netlist = netlist.with_table(ExtensionTable(
+    namespace, "findings", ("id", "kind"),
+    (("load1", "output_load"),), scope,
+))
+assert from_canonical_text(netlist.render()) == netlist
+columns = netlist.extensions.column_host(scope, "DEVICE_TABLE")
+findings = netlist.extensions.table(namespace, "findings", scope)
+```
+
+Functional methods return new immutable values. Declaring the same namespace
+version is idempotent; changing its version requires explicit removal/conversion.
+Adding a table or column replaces only the same qualified identity. Other
+namespaces survive. Use `without_table`, `without_column`, `without_namespace`
+or `without_extensions` for explicit removal. Headers, rows and declaration
+collections are tuples; cells are strings.
+
+`ExtensionScope()` is document scope; root and definition scopes require a name,
+stored case-folded to match structural identity rules. Column host names are
+`PINS`, `PARAMETER_DEFAULTS`, `PARAMETER_ASSIGNMENTS`, `NET_INCIDENT_TABLE`, `DEVICE_TABLE`,
+`BLACK_BOX_TABLE` and `DIAGNOSTICS`. `PINS` identifies the inline interface table
+after the root/definition marker; it is not a standalone file marker.
+Diagnostics require document scope; other column hosts require a circuit scope.
+
+Column value mappings use case-insensitive device/net/pin names for named hosts,
+and zero-based occurrence indices for ordered defaults, assignments and diagnostics. Omitted
+mapping keys yield empty cells; unknown or duplicate normalized keys fail.
+Sequence values follow the host's retained row order. Duplicate defaults,
+assignments and diagnostics remain separate positional occurrences, not durable entity IDs.
+
+### Preservation and mutation boundaries
+
+The envelope retains decoded extension cells, header/row order, duplicates,
+unused declarations and empty annotated hosts. Annotated core hosts retain their
+row order and attachment, including regenerated net tables. Output canonicalizes
+table-block order and formatting; byte identity and core spelling aliases are
+not promised. Empty targeted roots/optional hosts are emitted.
+
+An envelope binds to the exact ordered represented core, including parameters,
+definitions, black-box boundaries and diagnostics. Rendering or authoring after
+a core change fails: explicitly remove extensions before transforming, then
+reauthor them if appropriate. No-op normalization preserves the envelope; changed
+normalization fails. Top-only and definition-closure export reject extensions
+until explicitly removed because opaque tables may reference removed scopes.
+Read-only structural reports and expansion remain views; their results do not
+claim annotation-preserving export.
+
+Plain files retain existing render behavior. For an extended snapshot, default
+`render()` includes its diagnostics, even when only another table is annotated.
+`include_diagnostics=False` fails if it would remove diagnostics or an annotated
+diagnostic host. Explicit `render(include_extensions=False)` produces core-only
+text with the old diagnostic default; pass `include_diagnostics=True` separately
+if needed. Older readers reject extended files and can consume this projection.
+
+Attachment and preservation do not establish truth or freshness. The in-memory
+guard captures the snapshot at loading/authoring; it cannot discover external
+edits predating a load. Producers must retain and validate their original basis,
+assumptions and uncertainty where that matters. Canonical never refreshes those
+fields, runs namespace code, fetches schemas or follows evidence paths.
+Document equality includes annotations; `Circuit`/`Device` equality remains
+structural. The exact envelope guard digest is not a universal connectivity or
+consumer identity contract.
 
 ## What the representation omits
 
-Analysis commands, options, model bodies, global parameters, and other simulator
-directives are intentionally omitted from the structural representation. The
-original Eldo or ngspice deck remains the authoritative source for simulation.
+Analysis commands, options, model bodies, and other simulator
+directives apart from represented `.PARAM` assignments are intentionally omitted
+from the structural representation. The original Eldo or ngspice deck remains
+the authoritative source for simulation.

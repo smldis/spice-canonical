@@ -115,6 +115,8 @@ def top_level_netlist(netlist: CanonicalNetlist) -> CanonicalNetlist:
     can change when its candidate definitions are omitted. Diagnostics still
     describe the full input.
     """
+    if netlist.extensions:
+        raise ValueError("projection with extensions is unsupported; explicitly call without_extensions() first")
     devices = []
     for device in netlist.top.devices:
         call = resolve_call(netlist, device)
@@ -128,10 +130,14 @@ def definition_library(netlist: CanonicalNetlist, name: str) -> CanonicalNetlist
     """Project a selected definition and closure for ``render()``.
 
     Diagnostics remain input-wide, not scoped to this projection. The selected
-    cell remains a definition, not a designated simulation root.
+    cell remains a definition, not a designated simulation root. File-scope
+    .PARAM assignments remain on the otherwise empty root; they are not copied
+    into local definitions or evaluated.
     """
+    if netlist.extensions:
+        raise ValueError("projection with extensions is unsupported; explicitly call without_extensions() first")
     root = definition(netlist, name)
-    return CanonicalNetlist(Circuit('TOP', (), ()),
+    return CanonicalNetlist(Circuit('TOP', (), (), parameter_assignments=netlist.top.parameter_assignments),
                             (root, *reachable_definitions(netlist, root)), netlist.diagnostics)
 
 

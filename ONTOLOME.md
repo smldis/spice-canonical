@@ -33,10 +33,14 @@ from an attempt at speculative or exhaustive dialect coverage.
   defaults are ordered `Parameter` values on `Circuit.parameter_defaults` and
   optional definition-scoped `PARAMETER_DEFAULTS` tables. Names and raw expressions
   survive extraction and device-type normalization; instance parameters remain
-  explicit overrides. Default-free rendering and three-argument Circuit
-  construction retain their previous behavior.
+  explicit overrides. Operative `.PARAM` declarations are ordered values on
+  `Circuit.parameter_assignments`: all file-scope declarations share one root
+  `PARAMETER_ASSIGNMENTS` table; local body declarations belong to their definition.
+  Duplicate names and expressions survive, including parameter-only roots and
+  definition-library export. Inputs without defaults/assignments and existing
+  three-/four-argument Circuit construction retain their previous behavior.
 - Malformed declaration assignments raise structural errors; expression evaluation,
-  default expansion, global `.PARAM` semantics, and model-body interpretation
+  parameter precedence, default expansion, and model-body interpretation
   remain outside this extraction contract. `from_canonical_text` and
   `from_canonical_file` load the custom rendered tables without re-extraction.
 
@@ -45,6 +49,16 @@ fixtures now distinguish it without resolving simulator semantics. This evidence
 supports preserving declared configuration beside connectivity: graph structure
 alone cannot expose every meaningful input change, and retaining an expression
 is a narrower commitment than interpreting it.
+
+The sized-circuit handoff exposed the same boundary for operative `.PARAM`
+assignments: excluding evaluation had also excluded declarations from saved core
+objects. That omission is now revised explicitly. Source-owned parameter context
+belongs in canonical core rather than a producer namespace, so dropping analysis
+annotations cannot drop supplied sizing/bias values. A single root table groups
+all top-level declarations; it preserves ordered raw ties, not a simulator's
+resolved parameter environment. Old parameter-free snapshot guards retain their
+identity; assignment changes participate in new guards. Selected `Circuit`
+objects still need their enclosing netlist for global context.
 
 ## Contribution to the parent
 
@@ -94,11 +108,39 @@ structural punctuation is escaped before rendering and decoded after splitting.
 Missing library bodies stay unavailable. This is a data handoff, not simulator
 serialization, inferred pin semantics or an algorithm-quality improvement.
 Prototype maturity is unchanged.
-Rendered canonical tables now omit diagnostic rows by default; an explicit
+Plain rendered canonical tables omit diagnostic rows by default; an explicit
 render/CLI flag includes them. Extraction still retains diagnostics in Python,
 CLI warnings remain a separate stderr stream, and strict mode still tests the
 extraction result. This makes the structural artifact the default while leaving
 the full diagnostic record available by choice.
+
+## Namespaced artifact data
+
+The owner requested project-defined tables and columns in a common canonical
+artifact, then adopted the conservative direction of an independent Astra
+review on 2026-10-06. Canonical now carries immutable versioned namespaces,
+document/root/definition-scoped custom tables and columns on pin, default, net,
+device, black-box and diagnostic hosts. Unknown producer schemas remain data;
+canonical owns envelope and attachment validation, never functional meaning,
+schema fetching or producer execution. Structural Circuit/Device objects remain
+unchanged. Namespace identifiers reduce accidental collisions without proving
+ownership. The original simulator deck remains authoritative.
+
+The preservation commitment is decoded payload, ordered headers/rows and correct
+attachment, including empty annotated hosts and unused declarations. Required
+host layout is metadata, not a second connectivity authority. The codec now
+distinguishes an empty cell/row and preserves Unicode whitespace and separators.
+Extended export retains diagnostics; plain export retains its earlier default.
+Core-only export and removal are explicit. An envelope is bound to the exact
+ordered core snapshot: core-changing normalization fails and projection requires
+removal. Read-only structural views do not claim to transport annotations.
+This simple boundary avoids guessing how opaque references follow edits.
+
+Attachment is not evidence validity. Loading binds the represented snapshot;
+external edits before loading are not inferred. Producers retain their own basis,
+assumptions and uncertainty. Automatic migration, annotation-aware expansion and
+universal reference/schema semantics remain unbuilt. Focused preservation and
+consumer checks exercise these boundaries; prototype maturity is unchanged.
 
 Review of an extracted `.SUBCKT TOP` with top-level devices showed that table
 loading must keep the top-level circuit outside the subcircuit-definition name
