@@ -27,7 +27,7 @@ VSS
 `TOP_PORTS TOP` declares the root and lists its external ports. An ordinary
 SPICE root has no declared ports, hence no data rows. The table still carries
 the root's identity and interface; it is not an extra declaration alongside
-another root table. Do not add a fictitious `\e` port row.
+another root table. Do not add a fictitious empty port row.
 
 `SUBCKT_PORTS amplifier` similarly declares a reusable definition and its ordered
 ports. It does not instantiate it. There is no separate `SUBCKT` declaration.
@@ -47,7 +47,7 @@ table  = label, LF, header, { LF, row };
 label  = table_name, [ " ", scope_name ];
 header = column, { " | ", column };
 row    = cell, " | ", cell, { " | ", cell }
-       | nonempty_cell | empty_row;
+       | nonempty_cell;
 gap    = LF, LF, { LF };
 
 table_name = core_table | qualified_name;
@@ -70,7 +70,6 @@ line_number    = "0" | version;
 scope_name    = nonempty_cell;
 cell          = { plain | escape };
 nonempty_cell = ( plain | escape ), cell;
-empty_row     = BS, "e";
 plain         = ? Unicode scalar except backslash, vertical bar,
                   control characters and whitespace other than ASCII space ?;
 escape        = BS, ( BS | "|" | "n" | "r" | "t" | "s"
@@ -93,11 +92,13 @@ incident_char = escape | ? plain character except comma or dot ?;
 ```
 
 A row with two or more columns contains delimiters even when all cells are
-empty. A one-column row must contain a nonempty encoding; `empty_row` is the
-exceptional spelling for one empty value. Blank physical lines separate tables
-and never count as rows. Thus zero rows and one empty row remain distinct.
-`empty_row` is legal only for a one-column table whose schema permits an empty
-value; it is not an escape to insert inside other text.
+empty. A one-column row must contain a nonempty encoding. Blank physical lines
+separate tables and never count as rows. An empty one-column data row is not
+representable; a table with no entries retains its label and header with zero
+rows. This deliberately gives up the former distinction between zero rows and
+one empty row in a one-column extension table. No current engineering consumer
+requiring that distinction was found; generic preservation tests alone do not
+justify a special syntax rule.
 
 Structured-field productions refine `cell` for the named core columns. Split
 unescaped delimiters before decoding. A connection's key and value are a pin
@@ -150,8 +151,8 @@ and undeclared namespace prefixes are errors.
 - Leave ordinary empty cells blank: `X1 | divider | IN=input | ` has no
   parameter overrides. Empty list-valued cells mean empty lists, not null,
   unknown or an omitted prerequisite. Empty required names and ports are invalid.
-  Reserve `\e` for an otherwise invisible empty row in a one-column producer
-  table. A literal backslash followed by e is encoded `\\e`.
+  There is no special empty-value escape. A literal backslash followed by e
+  is encoded `\\e`, using the ordinary backslash escape.
 - Split delimiters before decoding. Preserve existing escapes: `\\`, `\|`,
   `\n`, `\r`, `\t`, `\s`, `\uHHHH`. Significant edge spaces use `\s`;
   control characters and Unicode separators are escaped. Raw cell and record
@@ -256,23 +257,11 @@ These are synthetic producer data, not built-in electrical facts. Omitting the
 scope argument from a producer table makes it document-scoped. The declaration
 must precede use, and unknown declared schemas must still be preserved.
 
-An empty ordinary cell needs no marker. For example, the two adjacent
-separators in X1's row enclose an empty `parameters` cell. The only exceptional
-case is a one-column producer table:
-
-```text
-org.example.analysis:notes divider
-text
-\e
-```
-
-This contains one empty note. The same label and header with no data line
-contains zero notes. Leaving that one row blank would erase the distinction
-because blank lines separate tables. Existing preservation coverage explicitly
-checks this distinction in `tests/test_extensions.py`, including opaque producer
-data. Eliminating `\e` entirely would require another row boundary convention
-(such as enclosing every row in pipes) or dropping the distinction. Neither
-change is needed just to allow ordinary blank cells.
+The two adjacent separators in X1's row enclose an empty `parameters` cell.
+A one-column producer table with no entries contains only its label and header;
+an invisible empty row is not another entry. Empty values remain supported in
+multi-column rows, including rows whose cells are all empty: their delimiters
+make the row visible.
 
 ## Other simplifications considered
 
@@ -296,7 +285,12 @@ not a claim that shorter text or fewer table names automatically helps agents.
 New writers would emit one normal form. New readers would retain the current
 markers, headers and empty-cell spellings as a legacy input dialect, mapping to
 the same circuit objects and rejecting duplicate logical tables even across
-aliases. Old readers cannot read the proposed new form; coordinate reader
+aliases. Legacy input may still contain the former empty-value escape. Reading
+that dialect must not silently discard data: exporting a legacy one-column
+empty row to the new form must fail explicitly, identifying the affected table,
+until the producer or caller resolves it. There is no automatic row deletion or
+invented identifier. This is a representability check, not another syntax rule.
+Old readers cannot read the proposed new form; coordinate reader
 rollout before emitting it. An absent library root, zero-port definitions,
 explicit root ports, root/definition name collisions and unknown namespaces
 must retain their existing meanings. No source or evaluation artifacts are
