@@ -72,7 +72,8 @@ def test_defaults_reuse_cell_escaping_and_do_not_interpret_expressions():
         Parameter("Expr", "(f([1, 2]) + 3)"),
     )
     assert 'Expr | {GLOBAL == 5 \\| 2}\nPath | "a\\\\b"' in netlist.render()
-    assert "LEVEL" not in netlist.render()
+    assert "LEVEL=1" not in netlist.render()
+    assert netlist.top.parameter_assignments == (Parameter("GLOBAL", "5"),)
     assert netlist.top.parameter_defaults == ()
 
 

@@ -21,3 +21,9 @@ Optional source evidence
 .. automodule:: spice_canonical.evidence
    :members:
    :undoc-members:
+
+Namespaced artifact extensions
+------------------------------
+
+.. automodule:: spice_canonical.extensions
+   :members: CanonicalExtensions, ExtensionNamespace, ExtensionScope, ExtensionTable, ExtensionColumns, core_digest

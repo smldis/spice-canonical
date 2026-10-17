@@ -13,8 +13,12 @@ The Python API is `spice_canonical.canonical_netlist`. Includes are expanded
 recursively; model libraries can remain opaque; strict mode turns unresolved or
 unsupported structures into failures. Subcircuit declaration defaults are retained
 as ordered, unevaluated `Circuit.parameter_defaults` and optional
-`PARAMETER_DEFAULTS` tables, separately from instance overrides. Global `.PARAM`
-and model-body semantics are not implemented.
+`PARAMETER_DEFAULTS` tables, separately from instance overrides. Operative `.PARAM`
+assignments are retained in `Circuit.parameter_assignments`: all file-scope
+assignments share one `PARAMETER_ASSIGNMENTS` table on the root, even when the
+root has no devices. Subcircuit-body assignments belong to that definition.
+Expressions remain raw; parameter evaluation and model-body semantics are not
+implemented.
 
 With ngspice installed, the optional network-backed corpus check is:
 
@@ -33,6 +37,14 @@ preserve boundaries through saved files. Diagnostic rows are omitted by
 default; use `render(include_diagnostics=True)` or CLI
 `--include-diagnostics` to retain them in the artifact. CLI warnings remain on
 stderr.
+
+Projects can declare versioned namespaces and attach custom tables or additional
+columns to canonical artifacts through immutable `with_namespace`, `with_table`
+and `with_column` operations. Unknown project schemas survive load/save without
+producer dependencies. Envelopes bind to the exact core snapshot; transformations
+require explicit removal or reauthoring. Extended exports preserve diagnostics;
+`render(include_extensions=False)` explicitly exports core-only text for older
+readers. See [the extension contract](docs/representation.md#namespaced-tables-and-columns).
 
 ## Documentation
 
